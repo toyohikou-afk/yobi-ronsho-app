@@ -15,6 +15,10 @@ export default function Home() {
   const [isAnswered, setIsAnswered] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
+  // 復習（間違えた問題）管理用ステート
+  const [mistakeIds, setMistakeIds] = useState<number[]>([]);
+  const [onlyMistake, setOnlyMistake] = useState(false);
+
   // ア〜オ個別入力用ステート
   const [isMultiChoiceMode, setIsMultiChoiceMode] = useState(false);
   const [subAnswers, setSubAnswers] = useState<{ [key: string]: string }>({
@@ -42,6 +46,30 @@ export default function Home() {
   const [editIssue, setEditIssue] = useState('');
   const [editNorm, setEditNorm] = useState('');
   const [editCriteria, setEditCriteria] = useState('');
+
+  // ==========================================
+  // ローカルストレージから間違えた問題IDを復元
+  // ==========================================
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('yobi_mistake_ids');
+      if (saved) {
+        setMistakeIds(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error('復習リスト読み込みエラー:', e);
+    }
+  }, []);
+
+  // 復習フラグの手動切り替え
+  const toggleMistake = (id: number) => {
+    setMistakeIds((prev) => {
+      const exists = prev.includes(id);
+      const updated = exists ? prev.filter((item) => item !== id) : [...prev, id];
+      localStorage.setItem('yobi_mistake_ids', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   // ==========================================
   // 短答ドリル系の処理
@@ -78,7 +106,12 @@ export default function Home() {
     if (error || !data || data.length === 0) {
       setQuestions([]);
     } else {
-      setQuestions(data);
+      let filtered = data;
+      // 間違えた問題のみで絞り込み
+      if (onlyMistake) {
+        filtered = filtered.filter((q) => mistakeIds.includes(q.id));
+      }
+      setQuestions(filtered);
       setCurrentIndex(0);
     }
     setLoading(false);
@@ -90,7 +123,7 @@ export default function Home() {
 
   useEffect(() => {
     fetchQuestionsList();
-  }, [selectedYear, selectedSubject, onlyFrequent]);
+  }, [selectedYear, selectedSubject, onlyFrequent, onlyMistake]);
 
   const question = questions.length > 0 ? questions[currentIndex] : null;
 
@@ -110,7 +143,6 @@ export default function Home() {
   const addNum = (n: number) => setUserAnswer(prev => prev + String(n));
   const clearNum = () => setUserAnswer('');
 
-  // ア〜オの選択
   const handleSelectSub = (label: string, val: string) => {
     setSubAnswers(prev => ({ ...prev, [label]: val }));
   };
@@ -130,9 +162,17 @@ export default function Home() {
     if (!finalAnswer) return;
 
     const correctAns = question.answer.replace(/[^0-9]/g, '');
-    setIsCorrect(finalAnswer === correctAns);
+    const correct = finalAnswer === correctAns;
+    setIsCorrect(correct);
     setUserAnswer(finalAnswer);
     setIsAnswered(true);
+
+    // 間違えた場合は自動でローカルストレージの復習リストに追加
+    if (!correct && !mistakeIds.includes(question.id)) {
+      const updated = [...mistakeIds, question.id];
+      setMistakeIds(updated);
+      localStorage.setItem('yobi_mistake_ids', JSON.stringify(updated));
+    }
   };
 
   const handlePrev = () => {
@@ -270,7 +310,6 @@ export default function Home() {
     fetchCards();
   };
 
-  // 通常テンキー用ボタンスイッチの判定
   let maxButtons = 8;
   let isTwoBtns = false;
   if (question) {
@@ -281,6 +320,7 @@ export default function Home() {
   }
 
   const displayYear = question ? (question.year.includes('年') ? question.year : `${question.year}年度`) : '';
+  const isMarkedMistake = question ? mistakeIds.includes(question.id) : false;
 
   return (
     <div style={{ fontFamily: 'sans-serif', padding: '15px', maxWidth: '800px', margin: 'auto', backgroundColor: '#f5f6fa', color: '#333', minHeight: '100vh', boxSizing: 'border-box' }}>
@@ -308,7 +348,7 @@ export default function Home() {
       {activeTab === 'tantou' && (
         <div>
           {/* フィルターパネル */}
-          <div style={{ background: '#fff', padding: '12px', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '15px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', justifyContent: 'space-between', border: '2px solid #4a69bd' }}>
+          <div style={{ background: '#fff', padding: '12px', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '15px', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', justifyContent: 'space-between', border: '2px solid #4a69bd' }}>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} style={{ padding: '6px 10px', borderRadius: '5px', border: '1px solid #4a69bd', fontSize: '14px', background: '#fff', color: '#2c3e50', fontWeight: 'bold', cursor: 'pointer' }}>
                 <option value="ALL">📅 すべての年度</option>
@@ -319,9 +359,14 @@ export default function Home() {
                 {subjects.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <label style={{ fontSize: '14px', fontWeight: 'bold', color: '#2c3e50', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+            
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#2c3e50', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
                 <input type="checkbox" checked={onlyFrequent} onChange={(e) => setOnlyFrequent(e.target.checked)} /> ⭐ 頻出
+              </label>
+              
+              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#e84118', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', background: onlyMistake ? '#ffeaa7' : 'transparent', padding: '3px 8px', borderRadius: '5px' }}>
+                <input type="checkbox" checked={onlyMistake} onChange={(e) => setOnlyMistake(e.target.checked)} /> ❌ 間違えた問題 ({mistakeIds.length})
               </label>
             </div>
           </div>
@@ -329,14 +374,31 @@ export default function Home() {
           {loading ? (
             <div style={{ textAlign: 'center', padding: '40px', fontWeight: 'bold', color: '#7f8fa6' }}>読み込み中...</div>
           ) : !question ? (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#e84118', fontWeight: 'bold' }}>条件に一致する問題がありません。</div>
+            <div style={{ textAlign: 'center', padding: '40px', color: '#e84118', fontWeight: 'bold' }}>
+              {onlyMistake ? '現在、間違えた問題（復習対象）はありません！🎉' : '条件に一致する問題がありません。'}
+            </div>
           ) : (
             <>
               {/* 問題文ボックス */}
-              <div style={{ background: '#ffffff', padding: '20px', borderRadius: '12px', marginBottom: '15px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', borderLeft: '5px solid #4a69bd' }}>
-                <h3 style={{ color: '#4a69bd', fontSize: '18px', marginTop: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ background: '#ffffff', padding: '20px', borderRadius: '12px', marginBottom: '15px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', borderLeft: isMarkedMistake ? '5px solid #e84118' : '5px solid #4a69bd' }}>
+                <h3 style={{ color: '#4a69bd', fontSize: '18px', marginTop: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                   <span>【{question.subject} 第{question.question_num}問】({displayYear})</span>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <button
+                      onClick={() => toggleMistake(question.id)}
+                      style={{
+                        padding: '3px 9px',
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        borderRadius: '4px',
+                        border: isMarkedMistake ? '1px solid #e84118' : '1px solid #b2bec3',
+                        background: isMarkedMistake ? '#ffeaa7' : '#f5f6fa',
+                        color: isMarkedMistake ? '#d63031' : '#636e72',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {isMarkedMistake ? '🔖 復習中' : '☆ 復習に追加'}
+                    </button>
                     <span style={{ fontSize: '12px', background: '#e3f2fd', color: '#0d47a1', padding: '2px 8px', borderRadius: '4px' }}>ID: {question.id}</span>
                     <button
                       onClick={() => setEditingQuestion(question)}
@@ -392,7 +454,6 @@ export default function Home() {
               {!isAnswered ? (
                 <div>
                   {isMultiChoiceMode ? (
-                    /* ── ア〜オ個別入力UI ── */
                     <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: '2px solid #4a69bd', maxWidth: '420px', margin: '0 auto 15px auto', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                       <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#4a69bd', textAlign: 'center', marginBottom: '12px' }}>
                         アからオの各記述について選択してください (1: 正 / 2: 誤)
@@ -444,7 +505,6 @@ export default function Home() {
                       </button>
                     </div>
                   ) : (
-                    /* ── 通常テンキーUI ── */
                     <div>
                       <input
                         type="text"
@@ -474,19 +534,30 @@ export default function Home() {
                   )}
                 </div>
               ) : (
-                /* ── 解答判定表示 ── */
                 <div style={{ textAlign: 'center', background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
                   {isCorrect ? (
-                    <p style={{ color: '#44bd32', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>⭕️ 大正解！！</p>
+                    <div>
+                      <p style={{ color: '#44bd32', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>⭕️ 大正解！！</p>
+                      {isMarkedMistake && (
+                        <button
+                          onClick={() => toggleMistake(question.id)}
+                          style={{ marginTop: '10px', background: '#e3f2fd', color: '#0d47a1', border: '1px solid #90caf9', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}
+                        >
+                          🎉 克服できたので復習リストから外す
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <div>
                       <p style={{ color: '#e84118', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>❌ 不正解...</p>
+                      <div style={{ margin: '8px 0', fontSize: '13px', color: '#d63031', fontWeight: 'bold' }}>
+                        🔖 復習リストに自動登録しました
+                      </div>
                       <p style={{ fontSize: '18px', margin: '10px 0' }}>
                         あなたの解答: <b style={{ letterSpacing: '2px' }}>{userAnswer}</b><br />
                         正解は <b style={{ letterSpacing: '2px' }}>{question.answer.replace(/[^0-9]/g, '')}</b> です
                       </p>
 
-                      {/* ア〜オの各肢ごとの照合結果（5桁の場合に各肢ごとの正否を表示） */}
                       {question.answer.replace(/[^0-9]/g, '').length === 5 && (
                         <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', margin: '12px 0', flexWrap: 'wrap' }}>
                           {['ア', 'イ', 'ウ', 'エ', 'オ'].map((lbl, i) => {
@@ -671,7 +742,7 @@ export default function Home() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>正解 (※ア〜オ形式の場合は 21222 など5桁で入力)</label>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>正解</label>
                 <input
                   type="text"
                   value={editingQuestion.answer}
