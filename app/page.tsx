@@ -8,12 +8,18 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'tantou' | 'ronsho'>('tantou');
 
   // === 短答ドリル用ステート ===
-  const [questions, setQuestions] = useState<any[]>([]); // 全問題リスト
-  const [currentIndex, setCurrentIndex] = useState(0); // 現在の問題のインデックス
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [userAnswer, setUserAnswer] = useState('');
   const [isAnswered, setIsAnswered] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
+
+  // ア〜オ個別入力用ステート
+  const [isMultiChoiceMode, setIsMultiChoiceMode] = useState(false);
+  const [subAnswers, setSubAnswers] = useState<{ [key: string]: string }>({
+    ア: '', イ: '', ウ: '', エ: '', オ: ''
+  });
   
   // フィルター用
   const [years, setYears] = useState<any[]>([]);
@@ -22,7 +28,7 @@ export default function Home() {
   const [selectedSubject, setSelectedSubject] = useState('ALL');
   const [onlyFrequent, setOnlyFrequent] = useState(false);
 
-  // 編集用モーダルの状態
+  // 編集用モーダル
   const [editingQuestion, setEditingQuestion] = useState<any | null>(null);
 
   // === 論文（論証カード）用ステート ===
@@ -40,7 +46,6 @@ export default function Home() {
   // ==========================================
   // 短答ドリル系の処理
   // ==========================================
-  // 年度・科目リストの取得
   const fetchFilterOptions = async () => {
     const { data: yearData } = await supabase.from('tantou_questions').select('year').not('year', 'is', null);
     if (yearData) {
@@ -54,34 +59,27 @@ export default function Home() {
     }
   };
 
-  // 問題リストの取得（表記ゆれ対応の柔軟なフィルター付き）
   const fetchQuestionsList = async () => {
     setLoading(true);
     setIsAnswered(false);
     setUserAnswer('');
+    setSubAnswers({ ア: '', イ: '', ウ: '', エ: '', オ: '' });
 
     let query = supabase.from('tantou_questions').select('*').neq('answer', '').order('id', { ascending: true });
 
-    // 表記ゆれ（令和7, 令和7年, 令和7年度）を吸収するため部分一致（ilike）で検索
     if (selectedYear !== 'ALL') {
       const cleanYear = selectedYear.replace(/年度|年/g, '');
       query = query.ilike('year', `%${cleanYear}%`);
     }
-
-    if (selectedSubject !== 'ALL') {
-      query = query.eq('subject', selectedSubject);
-    }
-
-    if (onlyFrequent) {
-      query = query.eq('is_frequent', 1);
-    }
+    if (selectedSubject !== 'ALL') query = query.eq('subject', selectedSubject);
+    if (onlyFrequent) query = query.eq('is_frequent', 1);
 
     const { data, error } = await query;
     if (error || !data || data.length === 0) {
       setQuestions([]);
     } else {
       setQuestions(data);
-      setCurrentIndex(0); // フィルター変更時は最初の問題へ
+      setCurrentIndex(0);
     }
     setLoading(false);
   };
@@ -96,22 +94,53 @@ export default function Home() {
 
   const question = questions.length > 0 ? questions[currentIndex] : null;
 
+  // 問題切り替え時に「ア〜オ形式」か自動判定
+  useEffect(() => {
+    if (question) {
+      const qText = question.question_text || '';
+      const looksLikeMulti = (qText.includes('アからオ') || qText.includes('ア〜オ')) && 
+                             (qText.includes('正しい場合には1') || qText.includes('場合には1'));
+      setIsMultiChoiceMode(looksLikeMulti);
+      setSubAnswers({ ア: '', イ: '', ウ: '', エ: '', オ: '' });
+      setUserAnswer('');
+      setIsAnswered(false);
+    }
+  }, [currentIndex, question]);
+
   const addNum = (n: number) => setUserAnswer(prev => prev + String(n));
   const clearNum = () => setUserAnswer('');
+
+  // ア〜オの選択
+  const handleSelectSub = (label: string, val: string) => {
+    setSubAnswers(prev => ({ ...prev, [label]: val }));
+  };
   
   const submitAnswer = () => {
-    if (!userAnswer || !question) return;
+    if (!question) return;
+
+    let finalAnswer = userAnswer;
+    if (isMultiChoiceMode) {
+      finalAnswer = ['ア', 'イ', 'ウ', 'エ', 'オ'].map(k => subAnswers[k]).join('');
+      if (finalAnswer.length < 5) {
+        alert('アからオまですべて選択してください。');
+        return;
+      }
+    }
+
+    if (!finalAnswer) return;
+
     const correctAns = question.answer.replace(/[^0-9]/g, '');
-    setIsCorrect(userAnswer === correctAns);
+    setIsCorrect(finalAnswer === correctAns);
+    setUserAnswer(finalAnswer);
     setIsAnswered(true);
   };
 
-  // 前へ・次へ移動
   const handlePrev = () => {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
       setIsAnswered(false);
       setUserAnswer('');
+      setSubAnswers({ ア: '', イ: '', ウ: '', エ: '', オ: '' });
     }
   };
 
@@ -120,15 +149,13 @@ export default function Home() {
       setCurrentIndex(currentIndex + 1);
       setIsAnswered(false);
       setUserAnswer('');
+      setSubAnswers({ ア: '', イ: '', ウ: '', エ: '', オ: '' });
     }
   };
 
-  // 削除機能
   const handleDeleteQuestion = async (id: number) => {
     if (!confirm('本当にこの問題を削除しますか？')) return;
-
     const { error } = await supabase.from('tantou_questions').delete().eq('id', id);
-
     if (error) {
       alert('削除に失敗しました: ' + error.message);
     } else {
@@ -141,7 +168,6 @@ export default function Home() {
     }
   };
 
-  // 更新（編集保存）機能
   const handleUpdateQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingQuestion) return;
@@ -161,14 +187,11 @@ export default function Home() {
       alert('更新に失敗しました: ' + error.message);
     } else {
       alert('更新しました');
-      setQuestions(
-        questions.map((q) => (q.id === editingQuestion.id ? editingQuestion : q))
-      );
+      setQuestions(questions.map((q) => (q.id === editingQuestion.id ? editingQuestion : q)));
       setEditingQuestion(null);
     }
   };
 
-  // 短答からAI論文タブへの連携
   const handleSendToAI = () => {
     if (!question) return;
     const formattedYear = question.year.includes('年') ? question.year : `${question.year}年度`;
@@ -247,7 +270,7 @@ export default function Home() {
     fetchCards();
   };
 
-  // テンキーボタン数の判定
+  // 通常テンキー用ボタンスイッチの判定
   let maxButtons = 8;
   let isTwoBtns = false;
   if (question) {
@@ -257,13 +280,12 @@ export default function Home() {
     else if (qText.includes('1から5')) maxButtons = 5;
   }
 
-  // 年度表示を綺麗にするヘルパー
   const displayYear = question ? (question.year.includes('年') ? question.year : `${question.year}年度`) : '';
 
   return (
     <div style={{ fontFamily: 'sans-serif', padding: '15px', maxWidth: '800px', margin: 'auto', backgroundColor: '#f5f6fa', color: '#333', minHeight: '100vh', boxSizing: 'border-box' }}>
       
-      {/* --- ヘッダー ＆ タブ切り替え --- */}
+      {/* ヘッダー ＆ タブ切り替え */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e1e8ed', paddingBottom: '12px', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
         <h2 style={{ fontSize: '22px', color: '#2c3e50', margin: 0 }}>予備試験 学習システム</h2>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -282,9 +304,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ========================================================= */}
-      {/* 1. 短答過去問タブ                                         */}
-      {/* ========================================================= */}
+      {/* 1. 短答過去問タブ */}
       {activeTab === 'tantou' && (
         <div>
           {/* フィルターパネル */}
@@ -313,7 +333,7 @@ export default function Home() {
           ) : (
             <>
               {/* 問題文ボックス */}
-              <div style={{ background: '#ffffff', padding: '20px', borderRadius: '12px', marginBottom: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', borderLeft: '5px solid #4a69bd' }}>
+              <div style={{ background: '#ffffff', padding: '20px', borderRadius: '12px', marginBottom: '15px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', borderLeft: '5px solid #4a69bd' }}>
                 <h3 style={{ color: '#4a69bd', fontSize: '18px', marginTop: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span>【{question.subject} 第{question.question_num}問】({displayYear})</span>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -338,7 +358,7 @@ export default function Home() {
               </div>
 
               {/* 前へ・次へページネーションボタン */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
                 <button
                   onClick={handlePrev}
                   disabled={currentIndex === 0}
@@ -358,42 +378,129 @@ export default function Home() {
                 </button>
               </div>
 
+              {/* 解答形式手動切り替えバー */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
+                <button
+                  onClick={() => setIsMultiChoiceMode(!isMultiChoiceMode)}
+                  style={{ fontSize: '12px', background: '#ecf0f1', border: '1px solid #bdc3c7', padding: '4px 10px', borderRadius: '5px', cursor: 'pointer', color: '#2c3e50', fontWeight: 'bold' }}
+                >
+                  ⚙️ 解答欄切替: {isMultiChoiceMode ? 'ア〜オ個別選択中' : '通常テンキー入力中'} (手動で変更)
+                </button>
+              </div>
+
               {/* 解答入力・判定エリア */}
               {!isAnswered ? (
                 <div>
-                  <input
-                    type="text"
-                    readOnly
-                    value={userAnswer}
-                    placeholder="解答"
-                    style={{ width: '100%', maxWidth: '300px', padding: '15px', fontSize: '28px', textAlign: 'center', border: '2px solid #4a69bd', borderRadius: '8px', margin: '0 auto 15px auto', display: 'block', letterSpacing: '5px', background: '#fff', fontWeight: 'bold', color: '#2c3e50', boxSizing: 'border-box' }}
-                  />
-                  
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center', marginBottom: '15px', maxWidth: '400px', margin: '0 auto 15px auto' }}>
-                    {Array.from({ length: maxButtons }, (_, i) => i + 1).map((n) => (
+                  {isMultiChoiceMode ? (
+                    /* ── ア〜オ個別入力UI ── */
+                    <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: '2px solid #4a69bd', maxWidth: '420px', margin: '0 auto 15px auto', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#4a69bd', textAlign: 'center', marginBottom: '12px' }}>
+                        アからオの各記述について選択してください (1: 正 / 2: 誤)
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {['ア', 'イ', 'ウ', 'エ', 'オ'].map((label) => (
+                          <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: '#f8f9fa', borderRadius: '6px' }}>
+                            <span style={{ fontWeight: 'bold', fontSize: '16px', width: '30px', color: '#2c3e50' }}>{label}</span>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button
+                                onClick={() => handleSelectSub(label, '1')}
+                                style={{
+                                  padding: '8px 18px',
+                                  fontSize: '15px',
+                                  fontWeight: 'bold',
+                                  borderRadius: '6px',
+                                  border: '2px solid #4a69bd',
+                                  background: subAnswers[label] === '1' ? '#4a69bd' : '#fff',
+                                  color: subAnswers[label] === '1' ? '#fff' : '#4a69bd',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                1 (正)
+                              </button>
+                              <button
+                                onClick={() => handleSelectSub(label, '2')}
+                                style={{
+                                  padding: '8px 18px',
+                                  fontSize: '15px',
+                                  fontWeight: 'bold',
+                                  borderRadius: '6px',
+                                  border: '2px solid #e84118',
+                                  background: subAnswers[label] === '2' ? '#e84118' : '#fff',
+                                  color: subAnswers[label] === '2' ? '#fff' : '#e84118',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                2 (誤)
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                       <button
-                        key={n}
-                        onClick={() => addNum(n)}
-                        style={{ flex: isTwoBtns ? '1 1 calc(50% - 10px)' : '1 1 calc(25% - 10px)', minWidth: '60px', padding: '15px', fontSize: '24px', fontWeight: 'bold', backgroundColor: '#fff', color: '#4a69bd', border: '2px solid #4a69bd', borderRadius: '10px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
+                        onClick={submitAnswer}
+                        style={{ width: '100%', marginTop: '15px', padding: '14px', fontSize: '18px', border: 'none', borderRadius: '8px', background: '#e84118', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
                       >
-                        {n}
+                        解答を送信
                       </button>
-                    ))}
-                  </div>
+                    </div>
+                  ) : (
+                    /* ── 通常テンキーUI ── */
+                    <div>
+                      <input
+                        type="text"
+                        readOnly
+                        value={userAnswer}
+                        placeholder="解答"
+                        style={{ width: '100%', maxWidth: '300px', padding: '15px', fontSize: '28px', textAlign: 'center', border: '2px solid #4a69bd', borderRadius: '8px', margin: '0 auto 15px auto', display: 'block', letterSpacing: '5px', background: '#fff', fontWeight: 'bold', color: '#2c3e50', boxSizing: 'border-box' }}
+                      />
+                      
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center', marginBottom: '15px', maxWidth: '400px', margin: '0 auto 15px auto' }}>
+                        {Array.from({ length: maxButtons }, (_, i) => i + 1).map((n) => (
+                          <button
+                            key={n}
+                            onClick={() => addNum(n)}
+                            style={{ flex: isTwoBtns ? '1 1 calc(50% - 10px)' : '1 1 calc(25% - 10px)', minWidth: '60px', padding: '15px', fontSize: '24px', fontWeight: 'bold', backgroundColor: '#fff', color: '#4a69bd', border: '2px solid #4a69bd', borderRadius: '10px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
 
-                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', maxWidth: '300px', margin: '0 auto' }}>
-                    <button onClick={clearNum} style={{ flex: 1, padding: '15px', fontSize: '18px', border: 'none', borderRadius: '10px', background: '#7f8fa6', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}>クリア</button>
-                    <button onClick={submitAnswer} style={{ flex: 2, padding: '15px', fontSize: '18px', border: 'none', borderRadius: '10px', background: '#e84118', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}>解答を送信</button>
-                  </div>
+                      <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', maxWidth: '300px', margin: '0 auto' }}>
+                        <button onClick={clearNum} style={{ flex: 1, padding: '15px', fontSize: '18px', border: 'none', borderRadius: '10px', background: '#7f8fa6', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}>クリア</button>
+                        <button onClick={submitAnswer} style={{ flex: 2, padding: '15px', fontSize: '18px', border: 'none', borderRadius: '10px', background: '#e84118', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}>解答を送信</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
+                /* ── 解答判定表示 ── */
                 <div style={{ textAlign: 'center', background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
                   {isCorrect ? (
                     <p style={{ color: '#44bd32', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>⭕️ 大正解！！</p>
                   ) : (
                     <div>
                       <p style={{ color: '#e84118', fontSize: '32px', fontWeight: 'bold', margin: 0 }}>❌ 不正解...</p>
-                      <p style={{ fontSize: '20px', margin: '10px 0' }}>あなたの解答: <b style={{ letterSpacing: '2px' }}>{userAnswer}</b><br />正解は <b style={{ letterSpacing: '2px' }}>{question.answer.replace(/[^0-9]/g, '')}</b> です</p>
+                      <p style={{ fontSize: '18px', margin: '10px 0' }}>
+                        あなたの解答: <b style={{ letterSpacing: '2px' }}>{userAnswer}</b><br />
+                        正解は <b style={{ letterSpacing: '2px' }}>{question.answer.replace(/[^0-9]/g, '')}</b> です
+                      </p>
+
+                      {/* ア〜オの各肢ごとの照合結果（5桁の場合に各肢ごとの正否を表示） */}
+                      {question.answer.replace(/[^0-9]/g, '').length === 5 && (
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', margin: '12px 0', flexWrap: 'wrap' }}>
+                          {['ア', 'イ', 'ウ', 'エ', 'オ'].map((lbl, i) => {
+                            const correctChar = question.answer.replace(/[^0-9]/g, '')[i];
+                            const userChar = userAnswer[i] || '-';
+                            const match = userChar === correctChar;
+                            return (
+                              <span key={lbl} style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '13px', background: match ? '#e8f8f5' : '#fdedec', border: `1px solid ${match ? '#2ecc71' : '#e74c3c'}`, fontWeight: 'bold' }}>
+                                {lbl}: {userChar} (正解 {correctChar}) {match ? '⭕️' : '❌'}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -429,9 +536,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ========================================================= */}
-      {/* 2. 論文・論証カードタブ                                   */}
-      {/* ========================================================= */}
+      {/* 2. 論文・論証カードタブ */}
       {activeTab === 'ronsho' && (
         <div>
           <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', marginBottom: '20px', border: '2px solid #4a69bd' }}>
@@ -532,7 +637,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* --- 編集モーダル --- */}
+      {/* 編集モーダル */}
       {editingQuestion && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1000 }}>
           <div style={{ background: '#fff', padding: '20px', borderRadius: '10px', maxWidth: '600px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
@@ -566,7 +671,7 @@ export default function Home() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>正解</label>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>正解 (※ア〜オ形式の場合は 21222 など5桁で入力)</label>
                 <input
                   type="text"
                   value={editingQuestion.answer}
