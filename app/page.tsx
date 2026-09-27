@@ -15,6 +15,10 @@ export default function Home() {
   const [isAnswered, setIsAnswered] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
+  // 正答率カウンター用ステート
+  const [totalAttempts, setTotalAttempts] = useState(0);
+  const [correctAttempts, setCorrectAttempts] = useState(0);
+
   // 復習（間違えた問題）管理用ステート
   const [mistakeIds, setMistakeIds] = useState<number[]>([]);
   const [onlyMistake, setOnlyMistake] = useState(false);
@@ -71,6 +75,21 @@ export default function Home() {
     });
   };
 
+  // 復習リストの一括全消去
+  const handleClearAllMistakes = () => {
+    if (!confirm(`復習リスト（間違えた問題: ${mistakeIds.length}件）をすべてクリアしますか？`)) return;
+    setMistakeIds([]);
+    localStorage.removeItem('yobi_mistake_ids');
+    setOnlyMistake(false);
+  };
+
+  // 成績カウンターのリセット
+  const handleResetScore = () => {
+    if (!confirm('今回のスコア（正解数・解答数）をリセットしますか？')) return;
+    setTotalAttempts(0);
+    setCorrectAttempts(0);
+  };
+
   // ==========================================
   // 短答ドリル系の処理
   // ==========================================
@@ -107,7 +126,6 @@ export default function Home() {
       setQuestions([]);
     } else {
       let filtered = data;
-      // 間違えた問題のみで絞り込み
       if (onlyMistake) {
         filtered = filtered.filter((q) => mistakeIds.includes(q.id));
       }
@@ -127,7 +145,6 @@ export default function Home() {
 
   const question = questions.length > 0 ? questions[currentIndex] : null;
 
-  // 問題切り替え時に「ア〜オ形式」か自動判定
   useEffect(() => {
     if (question) {
       const qText = question.question_text || '';
@@ -167,7 +184,13 @@ export default function Home() {
     setUserAnswer(finalAnswer);
     setIsAnswered(true);
 
-    // 間違えた場合は自動でローカルストレージの復習リストに追加
+    // カウンターの加算
+    setTotalAttempts(prev => prev + 1);
+    if (correct) {
+      setCorrectAttempts(prev => prev + 1);
+    }
+
+    // 間違えた場合は自動で復習リストに追加
     if (!correct && !mistakeIds.includes(question.id)) {
       const updated = [...mistakeIds, question.id];
       setMistakeIds(updated);
@@ -348,7 +371,7 @@ export default function Home() {
       {activeTab === 'tantou' && (
         <div>
           {/* フィルターパネル */}
-          <div style={{ background: '#fff', padding: '12px', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '15px', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', justifyContent: 'space-between', border: '2px solid #4a69bd' }}>
+          <div style={{ background: '#fff', padding: '12px', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', justifyContent: 'space-between', border: '2px solid #4a69bd' }}>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} style={{ padding: '6px 10px', borderRadius: '5px', border: '1px solid #4a69bd', fontSize: '14px', background: '#fff', color: '#2c3e50', fontWeight: 'bold', cursor: 'pointer' }}>
                 <option value="ALL">📅 すべての年度</option>
@@ -369,6 +392,37 @@ export default function Home() {
                 <input type="checkbox" checked={onlyMistake} onChange={(e) => setOnlyMistake(e.target.checked)} /> ❌ 間違えた問題 ({mistakeIds.length})
               </label>
             </div>
+          </div>
+
+          {/* 成績カウンター ＆ 復習一括リセットバー */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #dcdde1', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#2c3e50' }}>
+                📊 今回の成績: 正解 <span style={{ color: '#44bd32', fontSize: '16px' }}>{correctAttempts}</span> / 解答 <span style={{ fontSize: '16px' }}>{totalAttempts}</span>
+                {totalAttempts > 0 && (
+                  <span style={{ marginLeft: '8px', color: '#4a69bd', fontSize: '14px' }}>
+                    ({Math.round((correctAttempts / totalAttempts) * 100)}%)
+                  </span>
+                )}
+              </span>
+              {totalAttempts > 0 && (
+                <button
+                  onClick={handleResetScore}
+                  style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '4px', border: '1px solid #b2bec3', background: '#f5f6fa', color: '#636e72', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  スコアリセット
+                </button>
+              )}
+            </div>
+
+            {mistakeIds.length > 0 && (
+              <button
+                onClick={handleClearAllMistakes}
+                style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '5px', border: '1px solid #e84118', background: '#fff', color: '#e84118', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                🗑️ 復習リストを全リセット ({mistakeIds.length}件)
+              </button>
+            )}
           </div>
 
           {loading ? (
