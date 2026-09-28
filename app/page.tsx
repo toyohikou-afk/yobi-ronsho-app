@@ -63,26 +63,32 @@ export default function Home() {
   const [editAtehame, setEditAtehame] = useState('');
 
   // ==========================================
-  // サーバーAPI経由での安全な管理者認証
+  // サーバーAPI経由での安全な管理者認証 (/api/generate を利用)
   // ==========================================
   useEffect(() => {
     const verifyPasscode = async (passcode: string) => {
       try {
-        const res = await fetch('/api/verify-admin', {
+        const res = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ passcode }),
         });
+
+        if (res.status === 401) {
+          alert('❌ パスワードが一致しませんでした。');
+          return;
+        }
+
         const data = await res.json();
         if (data.success) {
           localStorage.setItem('yobi_is_admin', 'true');
           setIsAdmin(true);
           alert('🔑 管理者権限を有効化しました（このブラウザに記憶されます）');
         } else {
-          alert('❌ パスワードが一致しませんでした。');
+          alert(`❌ 認証エラー: ${data.error || '通信に失敗しました'}`);
         }
-      } catch (e) {
-        alert('認証通信エラーが発生しました。');
+      } catch (e: any) {
+        alert(`通信解析エラー: ${e.message}`);
       }
     };
 
@@ -458,7 +464,7 @@ export default function Home() {
   return (
     <div style={{ fontFamily: 'sans-serif', padding: '15px', maxWidth: '800px', margin: 'auto', backgroundColor: '#f5f6fa', color: '#333', minHeight: '100vh', boxSizing: 'border-box' }}>
       
-      {/* ヘッダー ＆ タブ切り替え（ログインUI等は完全非表示） */}
+      {/* ヘッダー ＆ タブ切り替え */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e1e8ed', paddingBottom: '12px', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
         <h2 style={{ fontSize: '22px', color: '#2c3e50', margin: 0 }}>予備試験 学習システム</h2>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -565,7 +571,7 @@ export default function Home() {
                     </button>
                     <span style={{ fontSize: '12px', background: '#e3f2fd', color: '#0d47a1', padding: '2px 8px', borderRadius: '4px' }}>ID: {question.id}</span>
                     
-                    {/* ★管理者（自分）だけに編集・削除ボタンを表示 */}
+                    {/* 管理者のみ編集・削除ボタンを表示 */}
                     {isAdmin && (
                       <>
                         <button
@@ -827,7 +833,7 @@ export default function Home() {
                   {JSON.stringify(result, null, 2)}
                 </pre>
                 
-                {/* ★管理者（自分）だけに保存ボタンを表示 */}
+                {/* 管理者のみ保存ボタンを表示 */}
                 {isAdmin && (
                   <button
                     onClick={handleSave}
@@ -919,7 +925,7 @@ export default function Home() {
                         )}
                       </div>
                       
-                      {/* ★管理者（自分）だけに編集・削除ボタンを表示 */}
+                      {/* 管理者のみ編集・削除ボタンを表示 */}
                       {isAdmin && (
                         <div style={{ display: 'flex', gap: '6px' }}>
                           {isEditing ? (
