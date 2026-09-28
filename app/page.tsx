@@ -25,6 +25,7 @@ export default function Home() {
 
   // ア〜オ個別入力用ステート
   const [isMultiChoiceMode, setIsMultiChoiceMode] = useState(false);
+  const [activeItemCount, setActiveItemCount] = useState<number>(5); // 3, 4, 5
   const [subAnswers, setSubAnswers] = useState<{ [key: string]: string }>({
     ア: '', イ: '', ウ: '', エ: '', オ: ''
   });
@@ -65,7 +66,6 @@ export default function Home() {
     }
   }, []);
 
-  // 復習フラグの手動切り替え
   const toggleMistake = (id: number) => {
     setMistakeIds((prev) => {
       const exists = prev.includes(id);
@@ -75,7 +75,6 @@ export default function Home() {
     });
   };
 
-  // 復習リストの一括全消去
   const handleClearAllMistakes = () => {
     if (!confirm(`復習リスト（間違えた問題: ${mistakeIds.length}件）をすべてクリアしますか？`)) return;
     setMistakeIds([]);
@@ -83,7 +82,6 @@ export default function Home() {
     setOnlyMistake(false);
   };
 
-  // 成績カウンターのリセット
   const handleResetScore = () => {
     if (!confirm('今回のスコア（正解数・解答数）をリセットしますか？')) return;
     setTotalAttempts(0);
@@ -145,17 +143,36 @@ export default function Home() {
 
   const question = questions.length > 0 ? questions[currentIndex] : null;
 
+  // 問題切り替え時の自動判定（ア〜オ形式か、肢数はいくつか）
   useEffect(() => {
     if (question) {
       const qText = question.question_text || '';
-      const looksLikeMulti = (qText.includes('アからオ') || qText.includes('ア〜オ')) && 
-                             (qText.includes('正しい場合には1') || qText.includes('場合には1'));
+      const ansDigits = (question.answer || '').replace(/[^0-9]/g, '');
+
+      const looksLikeMulti = (qText.includes('正しい場合には1') || qText.includes('場合には1')) &&
+                             (qText.includes('ア') || qText.includes('記述'));
+
       setIsMultiChoiceMode(looksLikeMulti);
+
+      // 肢数の判定（正解の桁数を最優先、次に問題文中の記述をチェック）
+      if (ansDigits.length >= 3 && ansDigits.length <= 5) {
+        setActiveItemCount(ansDigits.length);
+      } else if (!qText.includes('エ') && !qText.includes('オ')) {
+        setActiveItemCount(3);
+      } else if (!qText.includes('オ')) {
+        setActiveItemCount(4);
+      } else {
+        setActiveItemCount(5);
+      }
+
       setSubAnswers({ ア: '', イ: '', ウ: '', エ: '', オ: '' });
       setUserAnswer('');
       setIsAnswered(false);
     }
   }, [currentIndex, question]);
+
+  const allLabels = ['ア', 'イ', 'ウ', 'エ', 'オ'];
+  const currentLabels = allLabels.slice(0, activeItemCount);
 
   const addNum = (n: number) => setUserAnswer(prev => prev + String(n));
   const clearNum = () => setUserAnswer('');
@@ -169,9 +186,10 @@ export default function Home() {
 
     let finalAnswer = userAnswer;
     if (isMultiChoiceMode) {
-      finalAnswer = ['ア', 'イ', 'ウ', 'エ', 'オ'].map(k => subAnswers[k]).join('');
-      if (finalAnswer.length < 5) {
-        alert('アからオまですべて選択してください。');
+      // 現在表示されている肢の数だけ結合
+      finalAnswer = currentLabels.map(k => subAnswers[k]).join('');
+      if (finalAnswer.length < activeItemCount) {
+        alert(`${currentLabels[0]}から${currentLabels[currentLabels.length - 1]}まですべて選択してください。`);
         return;
       }
     }
@@ -184,13 +202,11 @@ export default function Home() {
     setUserAnswer(finalAnswer);
     setIsAnswered(true);
 
-    // カウンターの加算
     setTotalAttempts(prev => prev + 1);
     if (correct) {
       setCorrectAttempts(prev => prev + 1);
     }
 
-    // 間違えた場合は自動で復習リストに追加
     if (!correct && !mistakeIds.includes(question.id)) {
       const updated = [...mistakeIds, question.id];
       setMistakeIds(updated);
@@ -500,7 +516,7 @@ export default function Home() {
                   onClick={() => setIsMultiChoiceMode(!isMultiChoiceMode)}
                   style={{ fontSize: '12px', background: '#ecf0f1', border: '1px solid #bdc3c7', padding: '4px 10px', borderRadius: '5px', cursor: 'pointer', color: '#2c3e50', fontWeight: 'bold' }}
                 >
-                  ⚙️ 解答欄切替: {isMultiChoiceMode ? 'ア〜オ個別選択中' : '通常テンキー入力中'} (手動で変更)
+                  ⚙️ 解答欄切替: {isMultiChoiceMode ? `ア〜${currentLabels[currentLabels.length - 1]}個別選択中` : '通常テンキー入力中'} (手動で変更)
                 </button>
               </div>
 
@@ -508,12 +524,37 @@ export default function Home() {
               {!isAnswered ? (
                 <div>
                   {isMultiChoiceMode ? (
-                    <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: '2px solid #4a69bd', maxWidth: '420px', margin: '0 auto 15px auto', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                      <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#4a69bd', textAlign: 'center', marginBottom: '12px' }}>
-                        アからオの各記述について選択してください (1: 正 / 2: 誤)
+                    <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: '2px solid #4a69bd', maxWidth: '440px', margin: '0 auto 15px auto', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px dashed #dcdde1', paddingBottom: '8px', marginBottom: '10px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#4a69bd' }}>
+                          個別判定 (1: 正 / 2: 誤)
+                        </span>
+                        
+                        {/* 肢数の手動変更ボタン */}
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          {[3, 4, 5].map((cnt) => (
+                            <button
+                              key={cnt}
+                              onClick={() => setActiveItemCount(cnt)}
+                              style={{
+                                padding: '2px 6px',
+                                fontSize: '11px',
+                                fontWeight: 'bold',
+                                borderRadius: '4px',
+                                border: '1px solid #4a69bd',
+                                background: activeItemCount === cnt ? '#4a69bd' : '#fff',
+                                color: activeItemCount === cnt ? '#fff' : '#4a69bd',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              {cnt}肢
+                            </button>
+                          ))}
+                        </div>
                       </div>
+
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {['ア', 'イ', 'ウ', 'エ', 'オ'].map((label) => (
+                        {currentLabels.map((label) => (
                           <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: '#f8f9fa', borderRadius: '6px' }}>
                             <span style={{ fontWeight: 'bold', fontSize: '16px', width: '30px', color: '#2c3e50' }}>{label}</span>
                             <div style={{ display: 'flex', gap: '8px' }}>
@@ -612,9 +653,10 @@ export default function Home() {
                         正解は <b style={{ letterSpacing: '2px' }}>{question.answer.replace(/[^0-9]/g, '')}</b> です
                       </p>
 
-                      {question.answer.replace(/[^0-9]/g, '').length === 5 && (
+                      {/* 肢ごとの照合結果（3〜5桁対応） */}
+                      {question.answer.replace(/[^0-9]/g, '').length >= 3 && (
                         <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', margin: '12px 0', flexWrap: 'wrap' }}>
-                          {['ア', 'イ', 'ウ', 'エ', 'オ'].map((lbl, i) => {
+                          {allLabels.slice(0, question.answer.replace(/[^0-9]/g, '').length).map((lbl, i) => {
                             const correctChar = question.answer.replace(/[^0-9]/g, '')[i];
                             const userChar = userAnswer[i] || '-';
                             const match = userChar === correctChar;
@@ -796,7 +838,7 @@ export default function Home() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>正解</label>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>正解 (※個別判定形式の場合は 212 や 21222 など桁数に合わせて入力)</label>
                 <input
                   type="text"
                   value={editingQuestion.answer}
