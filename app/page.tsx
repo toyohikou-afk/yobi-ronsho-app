@@ -48,9 +48,10 @@ export default function Home() {
   const [cards, setCards] = useState<any[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editSubject, setEditSubject] = useState('');
-  const [editIssue, setEditIssue] = useState('');
-  const [editNorm, setEditNorm] = useState('');
-  const [editCriteria, setEditCriteria] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editArticleNum, setEditArticleNum] = useState('');
+  const [editKihan, setEditKihan] = useState('');
+  const [editAtehame, setEditAtehame] = useState('');
 
   // ==========================================
   // ローカルストレージから間違えた問題IDを復元
@@ -143,7 +144,6 @@ export default function Home() {
 
   const question = questions.length > 0 ? questions[currentIndex] : null;
 
-  // 問題切り替え時の自動判定（ア〜オ形式か、肢数はいくつか）
   useEffect(() => {
     if (question) {
       const qText = question.question_text || '';
@@ -154,7 +154,6 @@ export default function Home() {
 
       setIsMultiChoiceMode(looksLikeMulti);
 
-      // 肢数の判定（正解の桁数を最優先、次に問題文中の記述をチェック）
       if (ansDigits.length >= 3 && ansDigits.length <= 5) {
         setActiveItemCount(ansDigits.length);
       } else if (!qText.includes('エ') && !qText.includes('オ')) {
@@ -186,7 +185,6 @@ export default function Home() {
 
     let finalAnswer = userAnswer;
     if (isMultiChoiceMode) {
-      // 現在表示されている肢の数だけ結合
       finalAnswer = currentLabels.map(k => subAnswers[k]).join('');
       if (finalAnswer.length < activeItemCount) {
         alert(`${currentLabels[0]}から${currentLabels[currentLabels.length - 1]}まですべて選択してください。`);
@@ -315,11 +313,13 @@ export default function Home() {
     setIsSaving(true);
     try {
       const item = Array.isArray(result) ? result[0] : result;
+      // テーブルの正確なカラム名（title, kihan, atehame, article_num）に合わせて保存
       await supabase.from('ronsho_cards').insert([{
         subject: item.subject || item.科目 || '未設定',
-        issue: item.topic || item.issue || item.論点 || '未設定',
-        norm: item.norm || item.規範定立 || '',
-        criteria: Array.isArray(item.application_criteria) ? item.application_criteria.join('\n') : (item.application_criteria || ''),
+        title: item.topic || item.issue || item.論点 || item.title || '未設定',
+        article_num: item.article_num || item.条文 || '',
+        kihan: item.norm || item.規範定立 || item.kihan || '',
+        atehame: Array.isArray(item.application_criteria) ? item.application_criteria.join('\n') : (item.application_criteria || item.atehame || item.当てはめ基準 || ''),
         raw_data: result
       }]);
       alert('✅ 保存しました！');
@@ -338,12 +338,23 @@ export default function Home() {
     fetchCards();
   };
 
-  const startEditingCard = (card: any, s: string, i: string, n: string, c: string) => {
-    setEditingId(card.id); setEditSubject(s); setEditIssue(i); setEditNorm(n); setEditCriteria(c);
+  const startEditingCard = (card: any, s: string, t: string, a: string, k: string, at: string) => {
+    setEditingId(card.id);
+    setEditSubject(s);
+    setEditTitle(t);
+    setEditArticleNum(a);
+    setEditKihan(k);
+    setEditAtehame(at);
   };
 
   const handleUpdateCard = async (id: number) => {
-    await supabase.from('ronsho_cards').update({ subject: editSubject, issue: editIssue, norm: editNorm, criteria: editCriteria }).eq('id', id);
+    await supabase.from('ronsho_cards').update({
+      subject: editSubject,
+      title: editTitle,
+      article_num: editArticleNum,
+      kihan: editKihan,
+      atehame: editAtehame
+    }).eq('id', id);
     alert('✏️ 更新しました！');
     setEditingId(null);
     fetchCards();
@@ -530,7 +541,6 @@ export default function Home() {
                           個別判定 (1: 正 / 2: 誤)
                         </span>
                         
-                        {/* 肢数の手動変更ボタン */}
                         <div style={{ display: 'flex', gap: '4px' }}>
                           {[3, 4, 5].map((cnt) => (
                             <button
@@ -653,7 +663,6 @@ export default function Home() {
                         正解は <b style={{ letterSpacing: '2px' }}>{question.answer.replace(/[^0-9]/g, '')}</b> です
                       </p>
 
-                      {/* 肢ごとの照合結果（3〜5桁対応） */}
                       {question.answer.replace(/[^0-9]/g, '').length >= 3 && (
                         <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', margin: '12px 0', flexWrap: 'wrap' }}>
                           {allLabels.slice(0, question.answer.replace(/[^0-9]/g, '').length).map((lbl, i) => {
@@ -743,21 +752,33 @@ export default function Home() {
             {cards.map((card) => {
               const raw = card.raw_data;
               const rawItem = Array.isArray(raw) ? raw[0] : (raw || {});
+              
+              // 実際のスキーマ（title, article_num, kihan, atehame）を優先参照
               const s = card.subject || rawItem.subject || rawItem.科目 || '未設定';
-              const i = card.issue || rawItem.topic || rawItem.issue || rawItem.論点 || '（論点記載なし）';
-              const n = card.norm || rawItem.norm || rawItem.規範定立 || '（規範データなし）';
-              const rawC = card.criteria || rawItem.application_criteria || rawItem.当てはめ基準;
-              const c = Array.isArray(rawC) ? rawC.join('\n') : (rawC || '（当てはめ基準記載なし）');
+              const t = card.title || card.issue || rawItem.topic || rawItem.issue || rawItem.論点 || '（論点記載なし）';
+              const a = card.article_num || rawItem.article_num || rawItem.条文 || '';
+              const k = card.kihan || card.norm || rawItem.norm || rawItem.規範定立 || '（規範データなし）';
+              const rawAt = card.atehame || card.criteria || rawItem.application_criteria || rawItem.当てはめ基準;
+              const at = Array.isArray(rawAt) ? rawAt.join('\n') : (rawAt || '（当てはめ基準記載なし）');
+              
               const isEditing = editingId === card.id;
 
               return (
                 <div key={card.id} style={{ background: '#fff', padding: '18px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', border: '1px solid #dcdde1' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                    {isEditing ? (
-                      <input type="text" value={editSubject} onChange={(e) => setEditSubject(e.target.value)} style={{ padding: '4px 8px', border: '1px solid #4a69bd', borderRadius: '4px' }} />
-                    ) : (
-                      <span style={{ background: '#4a69bd', color: '#fff', fontSize: '12px', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>{s}</span>
-                    )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {isEditing ? (
+                        <>
+                          <input type="text" placeholder="科目" value={editSubject} onChange={(e) => setEditSubject(e.target.value)} style={{ padding: '4px 8px', border: '1px solid #4a69bd', borderRadius: '4px', width: '80px' }} />
+                          <input type="text" placeholder="条文番号" value={editArticleNum} onChange={(e) => setEditArticleNum(e.target.value)} style={{ padding: '4px 8px', border: '1px solid #4a69bd', borderRadius: '4px', width: '100px' }} />
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ background: '#4a69bd', color: '#fff', fontSize: '12px', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>{s}</span>
+                          {a && <span style={{ background: '#e3f2fd', color: '#0d47a1', fontSize: '12px', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>{a}</span>}
+                        </>
+                      )}
+                    </div>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       {isEditing ? (
                         <>
@@ -766,7 +787,7 @@ export default function Home() {
                         </>
                       ) : (
                         <>
-                          <button onClick={() => startEditingCard(card, s, i, n, c)} style={{ background: '#fbc531', color: '#2c3e50', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>編集</button>
+                          <button onClick={() => startEditingCard(card, s, t, a, k, at)} style={{ background: '#fbc531', color: '#2c3e50', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>編集</button>
                           <button onClick={() => handleDeleteCard(card.id)} style={{ background: '#e84118', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>削除</button>
                         </>
                       )}
@@ -774,26 +795,26 @@ export default function Home() {
                   </div>
 
                   {isEditing ? (
-                    <input type="text" value={editIssue} onChange={(e) => setEditIssue(e.target.value)} style={{ width: '100%', padding: '6px', border: '1px solid #4a69bd', borderRadius: '4px', marginBottom: '10px', boxSizing: 'border-box' }} />
+                    <input type="text" placeholder="論点・タイトル" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} style={{ width: '100%', padding: '6px', border: '1px solid #4a69bd', borderRadius: '4px', marginBottom: '10px', boxSizing: 'border-box' }} />
                   ) : (
-                    <h4 style={{ color: '#2c3e50', margin: '0 0 12px 0', fontSize: '17px' }}>論点: {i}</h4>
+                    <h4 style={{ color: '#2c3e50', margin: '0 0 12px 0', fontSize: '17px' }}>論点: {t}</h4>
                   )}
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                     <div style={{ background: '#f8f9fa', padding: '10px', borderRadius: '6px', border: '1px solid #e1e8ed' }}>
                       <strong style={{ display: 'block', fontSize: '12px', color: '#4a69bd', marginBottom: '5px' }}>【規範定立】</strong>
                       {isEditing ? (
-                        <textarea value={editNorm} onChange={(e) => setEditNorm(e.target.value)} style={{ width: '100%', height: '80px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                        <textarea value={editKihan} onChange={(e) => setEditKihan(e.target.value)} style={{ width: '100%', height: '80px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
                       ) : (
-                        <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap', lineHeight: '1.5', color: '#333' }} dangerouslySetInnerHTML={{ __html: n }} />
+                        <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap', lineHeight: '1.5', color: '#333' }} dangerouslySetInnerHTML={{ __html: k }} />
                       )}
                     </div>
                     <div style={{ background: '#f8f9fa', padding: '10px', borderRadius: '6px', border: '1px solid #e1e8ed' }}>
                       <strong style={{ display: 'block', fontSize: '12px', color: '#4a69bd', marginBottom: '5px' }}>【当てはめ基準】</strong>
                       {isEditing ? (
-                        <textarea value={editCriteria} onChange={(e) => setEditCriteria(e.target.value)} style={{ width: '100%', height: '80px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                        <textarea value={editAtehame} onChange={(e) => setEditAtehame(e.target.value)} style={{ width: '100%', height: '80px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
                       ) : (
-                        <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap', lineHeight: '1.5', color: '#333' }} dangerouslySetInnerHTML={{ __html: c }} />
+                        <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap', lineHeight: '1.5', color: '#333' }} dangerouslySetInnerHTML={{ __html: at }} />
                       )}
                     </div>
                   </div>
@@ -838,7 +859,7 @@ export default function Home() {
                 />
               </div>
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>正解 (※個別判定形式の場合は 212 や 21222 など桁数に合わせて入力)</label>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>正解</label>
                 <input
                   type="text"
                   value={editingQuestion.answer}
