@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from './lib/supabase';
 
 export default function Home() {
@@ -46,6 +46,12 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [cards, setCards] = useState<any[]>([]);
+  
+  // 論文カードフィルター＆検索用
+  const [selectedCardSubject, setSelectedCardSubject] = useState('ALL');
+  const [cardSearchKeyword, setCardSearchKeyword] = useState('');
+
+  // カード編集用
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editSubject, setEditSubject] = useState('');
   const [editTitle, setEditTitle] = useState('');
@@ -272,7 +278,7 @@ export default function Home() {
   const handleSendToAI = () => {
     if (!question) return;
     const formattedYear = question.year.includes('年') ? question.year : `${question.year}年度`;
-    const newPrompt = `以下の短答過去問（${formattedYear} ${question.subject}）について、関連する論点を抽出し、論証カード（規範定立と当てはめ基準）を作成してください。\n\n【問題】\n${question.question_text}`;
+    const newPrompt = `以下の短答過去問（${formattedYear} ${question.subject}）について、関連する論点を抽出し、判例の立場に立った規範定立と明確な当てはめ基準を含めた論証カードを作成してください。\n\n【問題】\n${question.question_text}`;
     setPrompt(newPrompt);
     setActiveTab('ronsho');
     window.scrollTo(0, 0);
@@ -289,6 +295,46 @@ export default function Home() {
   useEffect(() => {
     fetchCards();
   }, []);
+
+  // 蓄積カードから登録済みの科目を自動抽出
+  const cardSubjects = useMemo(() => {
+    const subs = cards.map((c) => {
+      const raw = c.raw_data;
+      const rawItem = Array.isArray(raw) ? raw[0] : (raw || {});
+      return c.subject || rawItem.subject || rawItem.科目;
+    }).filter(Boolean);
+    return Array.from(new Set(subs)).sort();
+  }, [cards]);
+
+  // 科目フィルター ＋ キーワード検索で絞り込んだカード一覧
+  const filteredCards = useMemo(() => {
+    return cards.filter((card) => {
+      const raw = card.raw_data;
+      const rawItem = Array.isArray(raw) ? raw[0] : (raw || {});
+      const s = card.subject || rawItem.subject || rawItem.科目 || '';
+      const t = card.title || card.issue || rawItem.topic || rawItem.issue || rawItem.論点 || '';
+      const a = card.article_num || rawItem.article_num || rawItem.条文 || '';
+      const k = card.kihan || card.norm || rawItem.norm || rawItem.規範定立 || '';
+      const rawAt = card.atehame || card.criteria || rawItem.application_criteria || rawItem.当てはめ基準;
+      const at = Array.isArray(rawAt) ? rawAt.join(' ') : (rawAt || '');
+
+      // 科目による絞り込み
+      if (selectedCardSubject !== 'ALL' && s !== selectedCardSubject) {
+        return false;
+      }
+
+      // キーワードによる横断検索
+      if (cardSearchKeyword.trim() !== '') {
+        const kw = cardSearchKeyword.trim().toLowerCase();
+        const targetText = `${s} ${t} ${a} ${k} ${at}`.toLowerCase();
+        if (!targetText.includes(kw)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [cards, selectedCardSubject, cardSearchKeyword]);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -313,7 +359,6 @@ export default function Home() {
     setIsSaving(true);
     try {
       const item = Array.isArray(result) ? result[0] : result;
-      // テーブルの正確なカラム名（title, kihan, atehame, article_num）に合わせて保存
       await supabase.from('ronsho_cards').insert([{
         subject: item.subject || item.科目 || '未設定',
         title: item.topic || item.issue || item.論点 || item.title || '未設定',
@@ -715,6 +760,7 @@ export default function Home() {
       {/* 2. 論文・論証カードタブ */}
       {activeTab === 'ronsho' && (
         <div>
+          {/* 生成入力ボックス */}
           <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', marginBottom: '20px', border: '2px solid #4a69bd' }}>
             <label style={{ display: 'block', fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#2c3e50' }}>論文プロンプト入力</label>
             <textarea
@@ -747,81 +793,127 @@ export default function Home() {
             )}
           </div>
 
-          <h3 style={{ color: '#2c3e50', borderBottom: '2px solid #4a69bd', paddingBottom: '5px' }}>📚 蓄積された論証カード ({cards.length}件)</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
-            {cards.map((card) => {
-              const raw = card.raw_data;
-              const rawItem = Array.isArray(raw) ? raw[0] : (raw || {});
-              
-              // 実際のスキーマ（title, article_num, kihan, atehame）を優先参照
-              const s = card.subject || rawItem.subject || rawItem.科目 || '未設定';
-              const t = card.title || card.issue || rawItem.topic || rawItem.issue || rawItem.論点 || '（論点記載なし）';
-              const a = card.article_num || rawItem.article_num || rawItem.条文 || '';
-              const k = card.kihan || card.norm || rawItem.norm || rawItem.規範定立 || '（規範データなし）';
-              const rawAt = card.atehame || card.criteria || rawItem.application_criteria || rawItem.当てはめ基準;
-              const at = Array.isArray(rawAt) ? rawAt.join('\n') : (rawAt || '（当てはめ基準記載なし）');
-              
-              const isEditing = editingId === card.id;
+          {/* 論文カード フィルター＆検索バー */}
+          <div style={{ background: '#fff', padding: '12px 16px', borderRadius: '10px', border: '2px solid #4a69bd', marginBottom: '15px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: '1 1 200px' }}>
+              <select
+                value={selectedCardSubject}
+                onChange={(e) => setSelectedCardSubject(e.target.value)}
+                style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #4a69bd', fontSize: '14px', background: '#fff', color: '#2c3e50', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                <option value="ALL">📚 すべての科目</option>
+                {cardSubjects.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
 
-              return (
-                <div key={card.id} style={{ background: '#fff', padding: '18px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', border: '1px solid #dcdde1' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      {isEditing ? (
-                        <>
-                          <input type="text" placeholder="科目" value={editSubject} onChange={(e) => setEditSubject(e.target.value)} style={{ padding: '4px 8px', border: '1px solid #4a69bd', borderRadius: '4px', width: '80px' }} />
-                          <input type="text" placeholder="条文番号" value={editArticleNum} onChange={(e) => setEditArticleNum(e.target.value)} style={{ padding: '4px 8px', border: '1px solid #4a69bd', borderRadius: '4px', width: '100px' }} />
-                        </>
-                      ) : (
-                        <>
-                          <span style={{ background: '#4a69bd', color: '#fff', fontSize: '12px', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>{s}</span>
-                          {a && <span style={{ background: '#e3f2fd', color: '#0d47a1', fontSize: '12px', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>{a}</span>}
-                        </>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      {isEditing ? (
-                        <>
-                          <button onClick={() => handleUpdateCard(card.id)} style={{ background: '#44bd32', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>保存</button>
-                          <button onClick={() => setEditingId(null)} style={{ background: '#7f8fa6', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>取消</button>
-                        </>
-                      ) : (
-                        <>
-                          <button onClick={() => startEditingCard(card, s, t, a, k, at)} style={{ background: '#fbc531', color: '#2c3e50', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>編集</button>
-                          <button onClick={() => handleDeleteCard(card.id)} style={{ background: '#e84118', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>削除</button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {isEditing ? (
-                    <input type="text" placeholder="論点・タイトル" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} style={{ width: '100%', padding: '6px', border: '1px solid #4a69bd', borderRadius: '4px', marginBottom: '10px', boxSizing: 'border-box' }} />
-                  ) : (
-                    <h4 style={{ color: '#2c3e50', margin: '0 0 12px 0', fontSize: '17px' }}>論点: {t}</h4>
-                  )}
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div style={{ background: '#f8f9fa', padding: '10px', borderRadius: '6px', border: '1px solid #e1e8ed' }}>
-                      <strong style={{ display: 'block', fontSize: '12px', color: '#4a69bd', marginBottom: '5px' }}>【規範定立】</strong>
-                      {isEditing ? (
-                        <textarea value={editKihan} onChange={(e) => setEditKihan(e.target.value)} style={{ width: '100%', height: '80px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
-                      ) : (
-                        <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap', lineHeight: '1.5', color: '#333' }} dangerouslySetInnerHTML={{ __html: k }} />
-                      )}
-                    </div>
-                    <div style={{ background: '#f8f9fa', padding: '10px', borderRadius: '6px', border: '1px solid #e1e8ed' }}>
-                      <strong style={{ display: 'block', fontSize: '12px', color: '#4a69bd', marginBottom: '5px' }}>【当てはめ基準】</strong>
-                      {isEditing ? (
-                        <textarea value={editAtehame} onChange={(e) => setEditAtehame(e.target.value)} style={{ width: '100%', height: '80px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
-                      ) : (
-                        <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap', lineHeight: '1.5', color: '#333' }} dangerouslySetInnerHTML={{ __html: at }} />
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flex: '2 1 260px' }}>
+              <input
+                type="text"
+                value={cardSearchKeyword}
+                onChange={(e) => setCardSearchKeyword(e.target.value)}
+                placeholder="🔍 論点・条文・規範・当てはめを検索..."
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #b2bec3', fontSize: '14px', boxSizing: 'border-box' }}
+              />
+              {cardSearchKeyword && (
+                <button
+                  onClick={() => setCardSearchKeyword('')}
+                  style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #b2bec3', background: '#f5f6fa', color: '#636e72', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                >
+                  クリア
+                </button>
+              )}
+            </div>
           </div>
+
+          {/* カード一覧ヘッダー */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #4a69bd', paddingBottom: '6px', marginBottom: '15px' }}>
+            <h3 style={{ color: '#2c3e50', margin: 0 }}>📚 蓄積された論証カード</h3>
+            <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#7f8fa6' }}>
+              表示中: <span style={{ color: '#4a69bd', fontSize: '15px' }}>{filteredCards.length}</span> / 全 {cards.length} 件
+            </span>
+          </div>
+
+          {filteredCards.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 20px', background: '#fff', borderRadius: '10px', color: '#7f8fa6', fontWeight: 'bold' }}>
+              条件に一致する論証カードが見つかりません。
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              {filteredCards.map((card) => {
+                const raw = card.raw_data;
+                const rawItem = Array.isArray(raw) ? raw[0] : (raw || {});
+                
+                const s = card.subject || rawItem.subject || rawItem.科目 || '未設定';
+                const t = card.title || card.issue || rawItem.topic || rawItem.issue || rawItem.論点 || '（論点記載なし）';
+                const a = card.article_num || rawItem.article_num || rawItem.条文 || '';
+                const k = card.kihan || card.norm || rawItem.norm || rawItem.規範定立 || '（規範データなし）';
+                const rawAt = card.atehame || card.criteria || rawItem.application_criteria || rawItem.当てはめ基準;
+                const at = Array.isArray(rawAt) ? rawAt.join('\n') : (rawAt || '（当てはめ基準記載なし）');
+                
+                const isEditing = editingId === card.id;
+
+                return (
+                  <div key={card.id} style={{ background: '#fff', padding: '18px', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', border: '1px solid #dcdde1' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {isEditing ? (
+                          <>
+                            <input type="text" placeholder="科目" value={editSubject} onChange={(e) => setEditSubject(e.target.value)} style={{ padding: '4px 8px', border: '1px solid #4a69bd', borderRadius: '4px', width: '80px' }} />
+                            <input type="text" placeholder="条文番号" value={editArticleNum} onChange={(e) => setEditArticleNum(e.target.value)} style={{ padding: '4px 8px', border: '1px solid #4a69bd', borderRadius: '4px', width: '100px' }} />
+                          </>
+                        ) : (
+                          <>
+                            <span style={{ background: '#4a69bd', color: '#fff', fontSize: '12px', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>{s}</span>
+                            {a && <span style={{ background: '#e3f2fd', color: '#0d47a1', fontSize: '12px', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>{a}</span>}
+                          </>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {isEditing ? (
+                          <>
+                            <button onClick={() => handleUpdateCard(card.id)} style={{ background: '#44bd32', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>保存</button>
+                            <button onClick={() => setEditingId(null)} style={{ background: '#7f8fa6', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>取消</button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => startEditingCard(card, s, t, a, k, at)} style={{ background: '#fbc531', color: '#2c3e50', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>編集</button>
+                            <button onClick={() => handleDeleteCard(card.id)} style={{ background: '#e84118', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>削除</button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {isEditing ? (
+                      <input type="text" placeholder="論点・タイトル" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} style={{ width: '100%', padding: '6px', border: '1px solid #4a69bd', borderRadius: '4px', marginBottom: '10px', boxSizing: 'border-box' }} />
+                    ) : (
+                      <h4 style={{ color: '#2c3e50', margin: '0 0 12px 0', fontSize: '17px' }}>論点: {t}</h4>
+                    )}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div style={{ background: '#f8f9fa', padding: '10px', borderRadius: '6px', border: '1px solid #e1e8ed' }}>
+                        <strong style={{ display: 'block', fontSize: '12px', color: '#4a69bd', marginBottom: '5px' }}>【規範定立】</strong>
+                        {isEditing ? (
+                          <textarea value={editKihan} onChange={(e) => setEditKihan(e.target.value)} style={{ width: '100%', height: '80px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                        ) : (
+                          <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap', lineHeight: '1.5', color: '#333' }} dangerouslySetInnerHTML={{ __html: k }} />
+                        )}
+                      </div>
+                      <div style={{ background: '#f8f9fa', padding: '10px', borderRadius: '6px', border: '1px solid #e1e8ed' }}>
+                        <strong style={{ display: 'block', fontSize: '12px', color: '#4a69bd', marginBottom: '5px' }}>【当てはめ基準】</strong>
+                        {isEditing ? (
+                          <textarea value={editAtehame} onChange={(e) => setEditAtehame(e.target.value)} style={{ width: '100%', height: '80px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
+                        ) : (
+                          <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap', lineHeight: '1.5', color: '#333' }} dangerouslySetInnerHTML={{ __html: at }} />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
