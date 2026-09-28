@@ -3,11 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from './lib/supabase';
 
-// ★管理者用の合言葉（好きな英数字・番号に変更可能）
-const ADMIN_SECRET = '8888';
-
 export default function Home() {
-  // === 管理者フラグ（画面上にログインUIは出さない） ===
+  // === 管理者フラグ ===
   const [isAdmin, setIsAdmin] = useState(false);
 
   // === タブ切り替え ('tantou' or 'ronsho') ===
@@ -66,29 +63,44 @@ export default function Home() {
   const [editAtehame, setEditAtehame] = useState('');
 
   // ==========================================
-  // シークレットURL判定 & ローカルストレージ復元
+  // サーバーAPI経由での安全な管理者認証
   // ==========================================
   useEffect(() => {
+    const verifyPasscode = async (passcode: string) => {
+      try {
+        const res = await fetch('/api/verify-admin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ passcode }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          localStorage.setItem('yobi_is_admin', 'true');
+          setIsAdmin(true);
+          alert('🔑 管理者権限を有効化しました（このブラウザに記憶されます）');
+        } else {
+          alert('❌ パスワードが一致しませんでした。');
+        }
+      } catch (e) {
+        alert('認証通信エラーが発生しました。');
+      }
+    };
+
     try {
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
-        
-        // ?admin=8888 でアクセスされたら管理者権限をブラウザに永続付与
-        if (params.get('admin') === ADMIN_SECRET) {
-          localStorage.setItem('yobi_is_admin', 'true');
-          setIsAdmin(true);
+        const queryPass = params.get('admin');
+
+        // URLに ?admin=xxx がある場合はサーバーAPIで安全に検証
+        if (queryPass) {
           window.history.replaceState({}, '', window.location.pathname);
-          alert('🔑 管理者権限を有効化しました（この端末に記憶されます）');
-        } 
-        // ?logout=true でアクセスされたら管理者解除
-        else if (params.get('logout') === 'true') {
+          verifyPasscode(queryPass);
+        } else if (params.get('logout') === 'true') {
           localStorage.removeItem('yobi_is_admin');
           setIsAdmin(false);
           window.history.replaceState({}, '', window.location.pathname);
           alert('🔒 管理者権限を解除しました');
-        } 
-        // 通常アクセス時は保存された権限を確認
-        else if (localStorage.getItem('yobi_is_admin') === 'true') {
+        } else if (localStorage.getItem('yobi_is_admin') === 'true') {
           setIsAdmin(true);
         }
       }
@@ -446,7 +458,7 @@ export default function Home() {
   return (
     <div style={{ fontFamily: 'sans-serif', padding: '15px', maxWidth: '800px', margin: 'auto', backgroundColor: '#f5f6fa', color: '#333', minHeight: '100vh', boxSizing: 'border-box' }}>
       
-      {/* ヘッダー ＆ タブ切り替え（無駄なログインボタン等は一切なし） */}
+      {/* ヘッダー ＆ タブ切り替え（ログインUI等は完全非表示） */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e1e8ed', paddingBottom: '12px', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
         <h2 style={{ fontSize: '22px', color: '#2c3e50', margin: 0 }}>予備試験 学習システム</h2>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -741,7 +753,7 @@ export default function Home() {
                       </p>
 
                       {question.answer.replace(/[^0-9]/g, '').length >= 3 && (
-                        <div style={{ display: 'center', justifyContent: 'center', gap: '8px', margin: '12px 0', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', margin: '12px 0', flexWrap: 'wrap' }}>
                           {allLabels.slice(0, question.answer.replace(/[^0-9]/g, '').length).map((lbl, i) => {
                             const correctChar = question.answer.replace(/[^0-9]/g, '')[i];
                             const userChar = userAnswer[i] || '-';
