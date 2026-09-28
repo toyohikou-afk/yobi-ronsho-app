@@ -3,7 +3,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from './lib/supabase';
 
+// ★管理者用の合言葉（好きな英数字・番号に変更可能）
+const ADMIN_SECRET = '8888';
+
 export default function Home() {
+  // === 管理者フラグ（画面上にログインUIは出さない） ===
+  const [isAdmin, setIsAdmin] = useState(false);
+
   // === タブ切り替え ('tantou' or 'ronsho') ===
   const [activeTab, setActiveTab] = useState<'tantou' | 'ronsho'>('tantou');
 
@@ -60,16 +66,40 @@ export default function Home() {
   const [editAtehame, setEditAtehame] = useState('');
 
   // ==========================================
-  // ローカルストレージから間違えた問題IDを復元
+  // シークレットURL判定 & ローカルストレージ復元
   // ==========================================
   useEffect(() => {
     try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        
+        // ?admin=8888 でアクセスされたら管理者権限をブラウザに永続付与
+        if (params.get('admin') === ADMIN_SECRET) {
+          localStorage.setItem('yobi_is_admin', 'true');
+          setIsAdmin(true);
+          window.history.replaceState({}, '', window.location.pathname);
+          alert('🔑 管理者権限を有効化しました（この端末に記憶されます）');
+        } 
+        // ?logout=true でアクセスされたら管理者解除
+        else if (params.get('logout') === 'true') {
+          localStorage.removeItem('yobi_is_admin');
+          setIsAdmin(false);
+          window.history.replaceState({}, '', window.location.pathname);
+          alert('🔒 管理者権限を解除しました');
+        } 
+        // 通常アクセス時は保存された権限を確認
+        else if (localStorage.getItem('yobi_is_admin') === 'true') {
+          setIsAdmin(true);
+        }
+      }
+
+      // 復習リストの復元
       const saved = localStorage.getItem('yobi_mistake_ids');
       if (saved) {
         setMistakeIds(JSON.parse(saved));
       }
     } catch (e) {
-      console.error('復習リスト読み込みエラー:', e);
+      console.error('ストレージ読み込みエラー:', e);
     }
   }, []);
 
@@ -237,6 +267,7 @@ export default function Home() {
   };
 
   const handleDeleteQuestion = async (id: number) => {
+    if (!isAdmin) return;
     if (!confirm('本当にこの問題を削除しますか？')) return;
     const { error } = await supabase.from('tantou_questions').delete().eq('id', id);
     if (error) {
@@ -253,7 +284,7 @@ export default function Home() {
 
   const handleUpdateQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingQuestion) return;
+    if (!isAdmin || !editingQuestion) return;
 
     const { error } = await supabase
       .from('tantou_questions')
@@ -347,7 +378,7 @@ export default function Home() {
   };
 
   const handleSave = async () => {
-    if (!result) return;
+    if (!isAdmin || !result) return;
     setIsSaving(true);
     try {
       const item = Array.isArray(result) ? result[0] : result;
@@ -370,12 +401,14 @@ export default function Home() {
   };
 
   const handleDeleteCard = async (id: number) => {
+    if (!isAdmin) return;
     if (!confirm('本当に削除しますか？')) return;
     await supabase.from('ronsho_cards').delete().eq('id', id);
     fetchCards();
   };
 
   const startEditingCard = (card: any, s: string, t: string, a: string, k: string, at: string) => {
+    if (!isAdmin) return;
     setEditingId(card.id);
     setEditSubject(s);
     setEditTitle(t);
@@ -385,6 +418,7 @@ export default function Home() {
   };
 
   const handleUpdateCard = async (id: number) => {
+    if (!isAdmin) return;
     await supabase.from('ronsho_cards').update({
       subject: editSubject,
       title: editTitle,
@@ -412,7 +446,7 @@ export default function Home() {
   return (
     <div style={{ fontFamily: 'sans-serif', padding: '15px', maxWidth: '800px', margin: 'auto', backgroundColor: '#f5f6fa', color: '#333', minHeight: '100vh', boxSizing: 'border-box' }}>
       
-      {/* ヘッダー ＆ タブ切り替え */}
+      {/* ヘッダー ＆ タブ切り替え（無駄なログインボタン等は一切なし） */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e1e8ed', paddingBottom: '12px', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
         <h2 style={{ fontSize: '22px', color: '#2c3e50', margin: 0 }}>予備試験 学習システム</h2>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -518,18 +552,24 @@ export default function Home() {
                       {isMarkedMistake ? '🔖 復習中' : '☆ 復習に追加'}
                     </button>
                     <span style={{ fontSize: '12px', background: '#e3f2fd', color: '#0d47a1', padding: '2px 8px', borderRadius: '4px' }}>ID: {question.id}</span>
-                    <button
-                      onClick={() => setEditingQuestion(question)}
-                      style={{ padding: '2px 8px', fontSize: '12px', background: '#fbc531', color: '#2c3e50', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                    >
-                      編集
-                    </button>
-                    <button
-                      onClick={() => handleDeleteQuestion(question.id)}
-                      style={{ padding: '2px 8px', fontSize: '12px', background: '#e84118', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                    >
-                      削除
-                    </button>
+                    
+                    {/* ★管理者（自分）だけに編集・削除ボタンを表示 */}
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={() => setEditingQuestion(question)}
+                          style={{ padding: '2px 8px', fontSize: '12px', background: '#fbc531', color: '#2c3e50', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={() => handleDeleteQuestion(question.id)}
+                          style={{ padding: '2px 8px', fontSize: '12px', background: '#e84118', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                        >
+                          削除
+                        </button>
+                      </>
+                    )}
                   </div>
                 </h3>
                 <div style={{ fontSize: '16px', lineHeight: '1.8', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', color: '#333' }}>
@@ -701,7 +741,7 @@ export default function Home() {
                       </p>
 
                       {question.answer.replace(/[^0-9]/g, '').length >= 3 && (
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', margin: '12px 0', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'center', justifyContent: 'center', gap: '8px', margin: '12px 0', flexWrap: 'wrap' }}>
                           {allLabels.slice(0, question.answer.replace(/[^0-9]/g, '').length).map((lbl, i) => {
                             const correctChar = question.answer.replace(/[^0-9]/g, '')[i];
                             const userChar = userAnswer[i] || '-';
@@ -774,13 +814,17 @@ export default function Home() {
                 <pre style={{ background: '#2d3436', color: '#55efc4', padding: '12px', borderRadius: '8px', fontSize: '13px', overflowX: 'auto' }}>
                   {JSON.stringify(result, null, 2)}
                 </pre>
-                <button
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  style={{ marginTop: '10px', background: '#e84118', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', width: '100%' }}
-                >
-                  {isSaving ? '保存中...' : 'データベースに保存する'}
-                </button>
+                
+                {/* ★管理者（自分）だけに保存ボタンを表示 */}
+                {isAdmin && (
+                  <button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    style={{ marginTop: '10px', background: '#e84118', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', width: '100%' }}
+                  >
+                    {isSaving ? '保存中...' : 'データベースに保存する'}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -863,19 +907,22 @@ export default function Home() {
                         )}
                       </div>
                       
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        {isEditing ? (
-                          <>
-                            <button onClick={() => handleUpdateCard(card.id)} style={{ background: '#44bd32', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>保存</button>
-                            <button onClick={() => setEditingId(null)} style={{ background: '#7f8fa6', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>取消</button>
-                          </>
-                        ) : (
-                          <>
-                            <button onClick={() => startEditingCard(card, s, t, a, k, at)} style={{ background: '#fbc531', color: '#2c3e50', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>編集</button>
-                            <button onClick={() => handleDeleteCard(card.id)} style={{ background: '#e84118', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>削除</button>
-                          </>
-                        )}
-                      </div>
+                      {/* ★管理者（自分）だけに編集・削除ボタンを表示 */}
+                      {isAdmin && (
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {isEditing ? (
+                            <>
+                              <button onClick={() => handleUpdateCard(card.id)} style={{ background: '#44bd32', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>保存</button>
+                              <button onClick={() => setEditingId(null)} style={{ background: '#7f8fa6', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>取消</button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => startEditingCard(card, s, t, a, k, at)} style={{ background: '#fbc531', color: '#2c3e50', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>編集</button>
+                              <button onClick={() => handleDeleteCard(card.id)} style={{ background: '#e84118', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>削除</button>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {isEditing ? (
@@ -910,8 +957,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* 編集モーダル */}
-      {editingQuestion && (
+      {/* 編集モーダル（管理者のみ） */}
+      {isAdmin && editingQuestion && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1000 }}>
           <div style={{ background: '#fff', padding: '20px', borderRadius: '10px', maxWidth: '600px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 style={{ marginTop: 0, color: '#2c3e50' }}>問題の編集</h3>
