@@ -3,13 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from './lib/supabase';
 
-// ★管理者パスコード（お好きな英数字・番号に変更できます）
-const ADMIN_PASSCODE = '8888';
-
 export default function Home() {
-  // === 管理者認証ステート ===
-  const [isAdmin, setIsAdmin] = useState(false);
-
   // === タブ切り替え ('tantou' or 'ronsho') ===
   const [activeTab, setActiveTab] = useState<'tantou' | 'ronsho'>('tantou');
 
@@ -66,44 +60,18 @@ export default function Home() {
   const [editAtehame, setEditAtehame] = useState('');
 
   // ==========================================
-  // 初回起動時のローカルストレージ復元（管理者認証 & 復習リスト）
+  // ローカルストレージから間違えた問題IDを復元
   // ==========================================
   useEffect(() => {
     try {
-      // 管理者ログイン状態の復元
-      const adminStatus = localStorage.getItem('yobi_is_admin');
-      if (adminStatus === 'true') {
-        setIsAdmin(true);
-      }
-
-      // 復習リストの復元
       const saved = localStorage.getItem('yobi_mistake_ids');
       if (saved) {
         setMistakeIds(JSON.parse(saved));
       }
     } catch (e) {
-      console.error('ローカルストレージ読み込みエラー:', e);
+      console.error('復習リスト読み込みエラー:', e);
     }
   }, []);
-
-  // 管理者ログイン・ログアウト処理
-  const handleAdminToggle = () => {
-    if (isAdmin) {
-      if (confirm('管理者モードをログアウトしますか？')) {
-        setIsAdmin(false);
-        localStorage.removeItem('yobi_is_admin');
-      }
-    } else {
-      const input = prompt('管理者パスコードを入力してください:');
-      if (input === ADMIN_PASSCODE) {
-        setIsAdmin(true);
-        localStorage.setItem('yobi_is_admin', 'true');
-        alert('🔓 管理者として認証されました。データ操作が可能です。');
-      } else if (input !== null) {
-        alert('❌ パスコードが正しくありません。');
-      }
-    }
-  };
 
   const toggleMistake = (id: number) => {
     setMistakeIds((prev) => {
@@ -269,10 +237,6 @@ export default function Home() {
   };
 
   const handleDeleteQuestion = async (id: number) => {
-    if (!isAdmin) {
-      alert('⚠️ データ削除は管理者のみ実行できます。');
-      return;
-    }
     if (!confirm('本当にこの問題を削除しますか？')) return;
     const { error } = await supabase.from('tantou_questions').delete().eq('id', id);
     if (error) {
@@ -289,10 +253,6 @@ export default function Home() {
 
   const handleUpdateQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdmin) {
-      alert('⚠️ データ編集は管理者のみ実行できます。');
-      return;
-    }
     if (!editingQuestion) return;
 
     const { error } = await supabase
@@ -387,10 +347,6 @@ export default function Home() {
   };
 
   const handleSave = async () => {
-    if (!isAdmin) {
-      alert('⚠️ データベースへの保存は管理者のみ実行できます。右上の管理者ログインを行ってください。');
-      return;
-    }
     if (!result) return;
     setIsSaving(true);
     try {
@@ -414,20 +370,12 @@ export default function Home() {
   };
 
   const handleDeleteCard = async (id: number) => {
-    if (!isAdmin) {
-      alert('⚠️ カードの削除は管理者のみ実行できます。');
-      return;
-    }
     if (!confirm('本当に削除しますか？')) return;
     await supabase.from('ronsho_cards').delete().eq('id', id);
     fetchCards();
   };
 
   const startEditingCard = (card: any, s: string, t: string, a: string, k: string, at: string) => {
-    if (!isAdmin) {
-      alert('⚠️ カードの編集は管理者のみ実行できます。');
-      return;
-    }
     setEditingId(card.id);
     setEditSubject(s);
     setEditTitle(t);
@@ -437,10 +385,6 @@ export default function Home() {
   };
 
   const handleUpdateCard = async (id: number) => {
-    if (!isAdmin) {
-      alert('⚠️ カードの更新は管理者のみ実行できます。');
-      return;
-    }
     await supabase.from('ronsho_cards').update({
       subject: editSubject,
       title: editTitle,
@@ -468,44 +412,21 @@ export default function Home() {
   return (
     <div style={{ fontFamily: 'sans-serif', padding: '15px', maxWidth: '800px', margin: 'auto', backgroundColor: '#f5f6fa', color: '#333', minHeight: '100vh', boxSizing: 'border-box' }}>
       
-      {/* ヘッダー ＆ 管理者認証 ＆ タブ切り替え */}
+      {/* ヘッダー ＆ タブ切り替え */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e1e8ed', paddingBottom: '12px', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
-        <div>
-          <h2 style={{ fontSize: '22px', color: '#2c3e50', margin: 0 }}>予備試験 学習システム</h2>
-          <span style={{ fontSize: '11px', color: isAdmin ? '#27ae60' : '#7f8fa6', fontWeight: 'bold' }}>
-            {isAdmin ? '🔓 管理者モード（全データ操作可能）' : '🔒 閲覧・学習モード（閲覧のみ）'}
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {/* 管理者ログイン／ログアウト切り替えボタン */}
-          <button
-            onClick={handleAdminToggle}
-            style={{
-              padding: '6px 12px',
-              borderRadius: '6px',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              border: isAdmin ? '1px solid #27ae60' : '1px solid #7f8fa6',
-              background: isAdmin ? '#e8f8f5' : '#fff',
-              color: isAdmin ? '#27ae60' : '#7f8fa6'
-            }}
-          >
-            {isAdmin ? '🔓 管理者ログアウト' : '🔒 管理者ログイン'}
-          </button>
-
+        <h2 style={{ fontSize: '22px', color: '#2c3e50', margin: 0 }}>予備試験 学習システム</h2>
+        <div style={{ display: 'flex', gap: '8px' }}>
           <button
             onClick={() => setActiveTab('tantou')}
-            style={{ padding: '8px 14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'tantou' ? '#4a69bd' : '#fff', color: activeTab === 'tantou' ? '#fff' : '#4a69bd', border: '1px solid #4a69bd' }}
+            style={{ padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'tantou' ? '#4a69bd' : '#fff', color: activeTab === 'tantou' ? '#fff' : '#4a69bd', border: '1px solid #4a69bd' }}
           >
-            短答過去問
+            短答過去問 (yobi_db)
           </button>
           <button
             onClick={() => setActiveTab('ronsho')}
-            style={{ padding: '8px 14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'ronsho' ? '#4a69bd' : '#fff', color: activeTab === 'ronsho' ? '#fff' : '#4a69bd', border: '1px solid #4a69bd' }}
+            style={{ padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'ronsho' ? '#4a69bd' : '#fff', color: activeTab === 'ronsho' ? '#fff' : '#4a69bd', border: '1px solid #4a69bd' }}
           >
-            論証カード
+            論文・論証カード (anki)
           </button>
         </div>
       </div>
@@ -597,24 +518,18 @@ export default function Home() {
                       {isMarkedMistake ? '🔖 復習中' : '☆ 復習に追加'}
                     </button>
                     <span style={{ fontSize: '12px', background: '#e3f2fd', color: '#0d47a1', padding: '2px 8px', borderRadius: '4px' }}>ID: {question.id}</span>
-                    
-                    {/* ★管理者のみ表示 */}
-                    {isAdmin && (
-                      <>
-                        <button
-                          onClick={() => setEditingQuestion(question)}
-                          style={{ padding: '2px 8px', fontSize: '12px', background: '#fbc531', color: '#2c3e50', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                        >
-                          編集
-                        </button>
-                        <button
-                          onClick={() => handleDeleteQuestion(question.id)}
-                          style={{ padding: '2px 8px', fontSize: '12px', background: '#e84118', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-                        >
-                          削除
-                        </button>
-                      </>
-                    )}
+                    <button
+                      onClick={() => setEditingQuestion(question)}
+                      style={{ padding: '2px 8px', fontSize: '12px', background: '#fbc531', color: '#2c3e50', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      編集
+                    </button>
+                    <button
+                      onClick={() => handleDeleteQuestion(question.id)}
+                      style={{ padding: '2px 8px', fontSize: '12px', background: '#e84118', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                      削除
+                    </button>
                   </div>
                 </h3>
                 <div style={{ fontSize: '16px', lineHeight: '1.8', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', color: '#333' }}>
@@ -859,21 +774,13 @@ export default function Home() {
                 <pre style={{ background: '#2d3436', color: '#55efc4', padding: '12px', borderRadius: '8px', fontSize: '13px', overflowX: 'auto' }}>
                   {JSON.stringify(result, null, 2)}
                 </pre>
-                
-                {/* ★管理者のみ保存ボタンを表示 */}
-                {isAdmin ? (
-                  <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    style={{ marginTop: '10px', background: '#e84118', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', width: '100%' }}
-                  >
-                    {isSaving ? '保存中...' : 'データベースに保存する'}
-                  </button>
-                ) : (
-                  <div style={{ marginTop: '10px', padding: '10px', background: '#f5f6fa', borderRadius: '6px', textAlign: 'center', fontSize: '13px', color: '#7f8fa6', fontWeight: 'bold' }}>
-                    🔒 データベースへの追加は管理者のみ許可されています。
-                  </div>
-                )}
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  style={{ marginTop: '10px', background: '#e84118', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', width: '100%' }}
+                >
+                  {isSaving ? '保存中...' : 'データベースに保存する'}
+                </button>
               </div>
             )}
           </div>
@@ -956,22 +863,19 @@ export default function Home() {
                         )}
                       </div>
                       
-                      {/* ★管理者のみ編集・削除ボタンを表示 */}
-                      {isAdmin && (
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          {isEditing ? (
-                            <>
-                              <button onClick={() => handleUpdateCard(card.id)} style={{ background: '#44bd32', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>保存</button>
-                              <button onClick={() => setEditingId(null)} style={{ background: '#7f8fa6', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>取消</button>
-                            </>
-                          ) : (
-                            <>
-                              <button onClick={() => startEditingCard(card, s, t, a, k, at)} style={{ background: '#fbc531', color: '#2c3e50', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>編集</button>
-                              <button onClick={() => handleDeleteCard(card.id)} style={{ background: '#e84118', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>削除</button>
-                            </>
-                          )}
-                        </div>
-                      )}
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {isEditing ? (
+                          <>
+                            <button onClick={() => handleUpdateCard(card.id)} style={{ background: '#44bd32', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>保存</button>
+                            <button onClick={() => setEditingId(null)} style={{ background: '#7f8fa6', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>取消</button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => startEditingCard(card, s, t, a, k, at)} style={{ background: '#fbc531', color: '#2c3e50', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>編集</button>
+                            <button onClick={() => handleDeleteCard(card.id)} style={{ background: '#e84118', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>削除</button>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     {isEditing ? (
@@ -1006,8 +910,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* 編集モーダル（管理者のみ） */}
-      {isAdmin && editingQuestion && (
+      {/* 編集モーダル */}
+      {editingQuestion && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1000 }}>
           <div style={{ background: '#fff', padding: '20px', borderRadius: '10px', maxWidth: '600px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 style={{ marginTop: 0, color: '#2c3e50' }}>問題の編集</h3>
