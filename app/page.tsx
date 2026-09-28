@@ -3,7 +3,31 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from './lib/supabase';
 
+// === 文字サイズの状態定義 ===
+type TextScale = 'normal' | 'medium' | 'large';
+
+const textSizeClasses: Record<TextScale, { question: string; option: string; explanation: string }> = {
+  normal: {
+    question: 'text-base leading-relaxed',
+    option: 'text-sm leading-normal',
+    explanation: 'text-sm leading-relaxed',
+  },
+  medium: {
+    question: 'text-lg leading-relaxed',
+    option: 'text-base leading-relaxed',
+    explanation: 'text-base leading-loose',
+  },
+  large: {
+    question: 'text-xl leading-loose font-normal',
+    option: 'text-lg leading-relaxed',
+    explanation: 'text-lg leading-loose',
+  },
+};
+
 export default function Home() {
+  // === 文字サイズ切替用ステート ===
+  const [textScale, setTextScale] = useState<TextScale>('normal');
+
   // === 管理者フラグ ===
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -63,9 +87,15 @@ export default function Home() {
   const [editAtehame, setEditAtehame] = useState('');
 
   // ==========================================
-  // サーバーAPI経由での安全な管理者認証 (/api/generate を利用)
+  // 初期化・認証処理
   // ==========================================
   useEffect(() => {
+    // 文字サイズの復元
+    const savedScale = localStorage.getItem('yobi_text_scale') as TextScale;
+    if (savedScale && textSizeClasses[savedScale]) {
+      setTextScale(savedScale);
+    }
+
     const verifyPasscode = async (passcode: string) => {
       try {
         const res = await fetch('/api/generate', {
@@ -97,7 +127,6 @@ export default function Home() {
         const params = new URLSearchParams(window.location.search);
         const queryPass = params.get('admin');
 
-        // URLに ?admin=xxx がある場合はサーバーAPIで安全に検証
         if (queryPass) {
           window.history.replaceState({}, '', window.location.pathname);
           verifyPasscode(queryPass);
@@ -120,6 +149,12 @@ export default function Home() {
       console.error('ストレージ読み込みエラー:', e);
     }
   }, []);
+
+  // 文字サイズ変更ハンドラー
+  const handleScaleChange = (scale: TextScale) => {
+    setTextScale(scale);
+    localStorage.setItem('yobi_text_scale', scale);
+  };
 
   const toggleMistake = (id: number) => {
     setMistakeIds((prev) => {
@@ -204,7 +239,7 @@ export default function Home() {
       const ansDigits = (question.answer || '').replace(/[^0-9]/g, '');
 
       const looksLikeMulti = (qText.includes('正しい場合には1') || qText.includes('場合には1')) &&
-                             (qText.includes('ア') || qText.includes('記述'));
+                            (qText.includes('ア') || qText.includes('記述'));
 
       setIsMultiChoiceMode(looksLikeMulti);
 
@@ -464,9 +499,38 @@ export default function Home() {
   return (
     <div style={{ fontFamily: 'sans-serif', padding: '15px', maxWidth: '800px', margin: 'auto', backgroundColor: '#f5f6fa', color: '#333', minHeight: '100vh', boxSizing: 'border-box' }}>
       
-      {/* ヘッダー ＆ タブ切り替え */}
+      {/* ヘッダー ＆ タブ切り替え ＆ 文字サイズコントロール */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e1e8ed', paddingBottom: '12px', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
         <h2 style={{ fontSize: '22px', color: '#2c3e50', margin: 0 }}>予備試験 学習システム</h2>
+        
+        {/* スマホ対応 文字サイズ変更コントロール */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#e1e8ed', padding: '3px 6px', borderRadius: '6px', border: '1px solid #b2bec3' }}>
+          <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#555' }}>文字:</span>
+          {(['normal', 'medium', 'large'] as TextScale[]).map((scale) => {
+            const label = scale === 'normal' ? '標準' : scale === 'medium' ? '中' : '大';
+            const isActive = textScale === scale;
+            return (
+              <button
+                key={scale}
+                onClick={() => handleScaleChange(scale)}
+                style={{
+                  padding: '2px 8px',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  borderRadius: '4px',
+                  border: 'none',
+                  background: isActive ? '#4a69bd' : '#fff',
+                  color: isActive ? '#fff' : '#333',
+                  cursor: 'pointer',
+                  boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
             onClick={() => setActiveTab('tantou')}
@@ -590,7 +654,8 @@ export default function Home() {
                     )}
                   </div>
                 </h3>
-                <div style={{ fontSize: '16px', lineHeight: '1.8', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', color: '#333' }}>
+                {/* 拡大対応した問題文 */}
+                <div className={textSizeClasses[textScale].question} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', color: '#333' }}>
                   {question.question_text}
                 </div>
               </div>
@@ -658,7 +723,7 @@ export default function Home() {
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div className={textSizeClasses[textScale].option} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {currentLabels.map((label) => (
                           <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: '#f8f9fa', borderRadius: '6px' }}>
                             <span style={{ fontWeight: 'bold', fontSize: '16px', width: '30px', color: '#2c3e50' }}>{label}</span>
@@ -786,7 +851,7 @@ export default function Home() {
                 </div>
               )}
 
-              {/* 解説アコーディオン */}
+              {/* 拡大対応した解説アコーディオン */}
               {isAnswered && (
                 <div style={{ marginTop: '20px' }}>
                   {['a', 'b', 'c', 'd', 'e'].map((char, idx) => {
@@ -795,8 +860,8 @@ export default function Home() {
                     const labels = ['ア', 'イ', 'ウ', 'エ', 'オ'];
                     return (
                       <details key={char} style={{ marginTop: '10px', border: '1px solid #ccc', borderRadius: '5px', background: '#fff' }}>
-                        <summary style={{ padding: '10px', background: '#f0f8ff', fontWeight: 'bold', cursor: 'pointer' }}>{labels[idx]} の解説を見る</summary>
-                        <p style={{ padding: '15px', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap', color: '#333' }}>{exp}</p>
+                        <summary className={textSizeClasses[textScale].option} style={{ padding: '10px', background: '#f0f8ff', fontWeight: 'bold', cursor: 'pointer' }}>{labels[idx]} の解説を見る</summary>
+                        <p className={textSizeClasses[textScale].explanation} style={{ padding: '15px', margin: 0, whiteSpace: 'pre-wrap', color: '#333' }}>{exp}</p>
                       </details>
                     );
                   })}
@@ -955,7 +1020,7 @@ export default function Home() {
                         {isEditing ? (
                           <textarea value={editKihan} onChange={(e) => setEditKihan(e.target.value)} style={{ width: '100%', height: '80px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
                         ) : (
-                          <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap', lineHeight: '1.5', color: '#333' }} dangerouslySetInnerHTML={{ __html: k }} />
+                          <div className={textSizeClasses[textScale].explanation} style={{ whiteSpace: 'pre-wrap', lineHeight: '1.5', color: '#333' }} dangerouslySetInnerHTML={{ __html: k }} />
                         )}
                       </div>
                       <div style={{ background: '#f8f9fa', padding: '10px', borderRadius: '6px', border: '1px solid #e1e8ed' }}>
@@ -963,7 +1028,7 @@ export default function Home() {
                         {isEditing ? (
                           <textarea value={editAtehame} onChange={(e) => setEditAtehame(e.target.value)} style={{ width: '100%', height: '80px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
                         ) : (
-                          <div style={{ fontSize: '14px', whiteSpace: 'pre-wrap', lineHeight: '1.5', color: '#333' }} dangerouslySetInnerHTML={{ __html: at }} />
+                          <div className={textSizeClasses[textScale].explanation} style={{ whiteSpace: 'pre-wrap', lineHeight: '1.5', color: '#333' }} dangerouslySetInnerHTML={{ __html: at }} />
                         )}
                       </div>
                     </div>
