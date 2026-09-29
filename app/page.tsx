@@ -335,6 +335,7 @@ export default function Home() {
     }
   };
 
+  // 解説も含めて更新する処理
   const handleUpdateQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin || !editingQuestion) return;
@@ -347,6 +348,11 @@ export default function Home() {
         subject: editingQuestion.subject,
         year: editingQuestion.year,
         question_num: editingQuestion.question_num,
+        explanation_a: editingQuestion.explanation_a || '',
+        explanation_b: editingQuestion.explanation_b || '',
+        explanation_c: editingQuestion.explanation_c || '',
+        explanation_d: editingQuestion.explanation_d || '',
+        explanation_e: editingQuestion.explanation_e || '',
       })
       .eq('id', editingQuestion.id);
 
@@ -1040,48 +1046,76 @@ export default function Home() {
         </div>
       )}
 
-      {/* 編集モーダル（管理者のみ） */}
+      {/* 編集モーダル（管理者のみ）：ア〜オの解説編集欄を追加 */}
       {isAdmin && editingQuestion && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1000 }}>
-          <div style={{ background: '#fff', padding: '20px', borderRadius: '10px', maxWidth: '600px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ marginTop: 0, color: '#2c3e50' }}>問題の編集</h3>
+          <div style={{ background: '#fff', padding: '20px', borderRadius: '10px', maxWidth: '640px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ marginTop: 0, color: '#2c3e50', borderBottom: '2px solid #4a69bd', paddingBottom: '8px' }}>問題・解説の編集</h3>
             <form onSubmit={handleUpdateQuestion} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>科目</label>
-                <input
-                  type="text"
-                  value={editingQuestion.subject}
-                  onChange={(e) => setEditingQuestion({ ...editingQuestion, subject: e.target.value })}
-                  style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>科目</label>
+                  <input
+                    type="text"
+                    value={editingQuestion.subject || ''}
+                    onChange={(e) => setEditingQuestion({ ...editingQuestion, subject: e.target.value })}
+                    style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>問題番号</label>
+                  <input
+                    type="number"
+                    value={editingQuestion.question_num || ''}
+                    onChange={(e) => setEditingQuestion({ ...editingQuestion, question_num: Number(e.target.value) })}
+                    style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
+                  />
+                </div>
               </div>
-              <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>問題番号</label>
-                <input
-                  type="number"
-                  value={editingQuestion.question_num}
-                  onChange={(e) => setEditingQuestion({ ...editingQuestion, question_num: Number(e.target.value) })}
-                  style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
-                />
-              </div>
+
               <div>
                 <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>問題文</label>
                 <textarea
-                  rows={8}
-                  value={editingQuestion.question_text}
+                  rows={6}
+                  value={editingQuestion.question_text || ''}
                   onChange={(e) => setEditingQuestion({ ...editingQuestion, question_text: e.target.value })}
                   style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box', fontFamily: 'monospace' }}
                 />
               </div>
+
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>正解</label>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>正解 (番号)</label>
                 <input
                   type="text"
-                  value={editingQuestion.answer}
+                  value={editingQuestion.answer || ''}
                   onChange={(e) => setEditingQuestion({ ...editingQuestion, answer: e.target.value })}
                   style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }}
                 />
               </div>
+
+              {/* 各肢ア〜オの解説編集フォーム */}
+              <div style={{ borderTop: '1px dashed #b2bec3', paddingTop: '10px', marginTop: '5px' }}>
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#4a69bd' }}>📝 各肢の解説編集 (ア〜オ)</h4>
+                {(['a', 'b', 'c', 'd', 'e'] as const).map((char, idx) => {
+                  const labels = ['ア', 'イ', 'ウ', 'エ', 'オ'];
+                  const fieldName = `explanation_${char}` as const;
+                  return (
+                    <div key={char} style={{ marginBottom: '10px' }}>
+                      <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '2px', color: '#2c3e50' }}>
+                        肢{labels[idx]} の解説 ({fieldName})
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={editingQuestion[fieldName] || ''}
+                        onChange={(e) => setEditingQuestion({ ...editingQuestion, [fieldName]: e.target.value })}
+                        placeholder={`肢${labels[idx]}の解説を入力...`}
+                        style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box', fontSize: '13px' }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
                 <button
                   type="button"
