@@ -52,7 +52,7 @@ export default function Home() {
 
   // ア〜オ個別入力用ステート
   const [isMultiChoiceMode, setIsMultiChoiceMode] = useState(false);
-  const [activeItemCount, setActiveItemCount] = useState<number>(5); // 3, 4, 5
+  const [activeItemCount, setActiveItemCount] = useState<number>(5);
   const [subAnswers, setSubAnswers] = useState<{ [key: string]: string }>({
     ア: '', イ: '', ウ: '', エ: '', オ: ''
   });
@@ -66,6 +66,17 @@ export default function Home() {
 
   // 編集用モーダル
   const [editingQuestion, setEditingQuestion] = useState<any | null>(null);
+
+  // === 誤り報告機能用ステート ===
+  const [reportingQuestion, setReportingQuestion] = useState<any | null>(null);
+  const [reportType, setReportType] = useState('正解の誤り');
+  const [reportDetail, setReportDetail] = useState('');
+  const [isSendingReport, setIsSendingReport] = useState(false);
+
+  // === 管理者用：報告一覧確認モーダル ===
+  const [showReportsListModal, setShowReportsListModal] = useState(false);
+  const [reportsList, setReportsList] = useState<any[]>([]);
+  const [pendingReportsCount, setPendingReportsCount] = useState(0);
 
   // === 論文（論証カード）用ステート ===
   const [prompt, setPrompt] = useState('【会社法】取締役の競業避止義務（356条1項1号）の該当性と損害額の算定について、判例をベースに出力して。');
@@ -90,7 +101,6 @@ export default function Home() {
   // 初期化・認証処理
   // ==========================================
   useEffect(() => {
-    // 文字サイズの復元
     const savedScale = localStorage.getItem('yobi_text_scale') as TextScale;
     if (savedScale && textSizeClasses[savedScale]) {
       setTextScale(savedScale);
@@ -140,7 +150,6 @@ export default function Home() {
         }
       }
 
-      // 復習リストの復元
       const saved = localStorage.getItem('yobi_mistake_ids');
       if (saved) {
         setMistakeIds(JSON.parse(saved));
@@ -150,7 +159,24 @@ export default function Home() {
     }
   }, []);
 
-  // 文字サイズ変更ハンドラー
+  // 管理者用：報告一覧の取得
+  const fetchReports = async () => {
+    const { data } = await supabase
+      .from('question_reports')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (data) {
+      setReportsList(data);
+      setPendingReportsCount(data.filter((r) => r.status === 'pending').length);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdmin) {
+      fetchReports();
+    }
+  }, [isAdmin]);
+
   const handleScaleChange = (scale: TextScale) => {
     setTextScale(scale);
     localStorage.setItem('yobi_text_scale', scale);
@@ -319,6 +345,57 @@ export default function Home() {
     }
   };
 
+  // 誤り報告の送信処理
+  const handleSubmitReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportingQuestion) return;
+    if (!reportDetail.trim()) {
+      alert('恐れ入りますが、誤りの内容を入力してください。');
+      return;
+    }
+
+    setIsSendingReport(true);
+    try {
+      const { error } = await supabase.from('question_reports').insert([
+        {
+          question_id: reportingQuestion.id,
+          year: reportingQuestion.year,
+          subject: reportingQuestion.subject,
+          question_num: reportingQuestion.question_num,
+          report_type: reportType,
+          detail: reportDetail.trim(),
+          status: 'pending'
+        }
+      ]);
+
+      if (error) throw error;
+
+      alert('ご報告ありがとうございます！内容を確認の上、修正いたします。');
+      setReportingQuestion(null);
+      setReportDetail('');
+      if (isAdmin) fetchReports();
+    } catch (err: any) {
+      alert('報告の送信に失敗しました: ' + err.message);
+    } finally {
+      setIsSendingReport(false);
+    }
+  };
+
+  // 管理者：報告ステータスの切り替え
+  const handleToggleReportStatus = async (reportId: number, currentStatus: string) => {
+    const newStatus = currentStatus === 'pending' ? 'resolved' : 'pending';
+    const { error } = await supabase
+      .from('question_reports')
+      .update({ status: newStatus })
+      .eq('id', reportId);
+
+    if (error) {
+      alert('ステータス更新に失敗しました: ' + error.message);
+    } else {
+      fetchReports();
+    }
+  };
+
   const handleDeleteQuestion = async (id: number) => {
     if (!isAdmin) return;
     if (!confirm('本当にこの問題を削除しますか？')) return;
@@ -335,7 +412,6 @@ export default function Home() {
     }
   };
 
-  // 解説も含めて更新する処理
   const handleUpdateQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin || !editingQuestion) return;
@@ -507,7 +583,31 @@ export default function Home() {
       
       {/* ヘッダー ＆ タブ切り替え ＆ 文字サイズコントロール */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e1e8ed', paddingBottom: '12px', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
-        <h2 style={{ fontSize: '22px', color: '#2c3e50', margin: 0 }}>予備試験 学習システム</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h2 style={{ fontSize: '22px', color: '#2c3e50', margin: 0 }}>予備試験 学習システム</h2>
+          
+          {/* 管理者用：報告一覧確認ボタン */}
+          {isAdmin && (
+            <button
+              onClick={() => setShowReportsListModal(true)}
+              style={{
+                background: pendingReportsCount > 0 ? '#e84118' : '#718093',
+                color: '#fff',
+                border: 'none',
+                padding: '4px 10px',
+                borderRadius: '20px',
+                fontSize: '11px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              📬 報告 {pendingReportsCount > 0 ? `(${pendingReportsCount}件未対応)` : '(0件)'}
+            </button>
+          )}
+        </div>
         
         {/* スマホ対応 文字サイズ変更コントロール */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#e1e8ed', padding: '3px 6px', borderRadius: '6px', border: '1px solid #b2bec3' }}>
@@ -623,7 +723,26 @@ export default function Home() {
               <div style={{ background: '#ffffff', padding: '20px', borderRadius: '12px', marginBottom: '15px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', borderLeft: isMarkedMistake ? '5px solid #e84118' : '5px solid #4a69bd' }}>
                 <h3 style={{ color: '#4a69bd', fontSize: '18px', marginTop: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                   <span>【{question.subject} 第{question.question_num}問】({displayYear})</span>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    
+                    {/* 利用者全員が押せる「誤りを報告」ボタン */}
+                    <button
+                      onClick={() => setReportingQuestion(question)}
+                      style={{
+                        padding: '3px 8px',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        borderRadius: '4px',
+                        border: '1px solid #e17055',
+                        background: '#fff',
+                        color: '#d63031',
+                        cursor: 'pointer'
+                      }}
+                      title="問題や解説に誤りがある場合に報告"
+                    >
+                      🚨 誤りを報告
+                    </button>
+
                     <button
                       onClick={() => toggleMistake(question.id)}
                       style={{
@@ -1046,7 +1165,127 @@ export default function Home() {
         </div>
       )}
 
-      {/* 編集モーダル（管理者のみ）：ア〜オの解説編集欄を追加 */}
+      {/* 誤り報告モーダル（一般利用者・管理者共通） */}
+      {reportingQuestion && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1100 }}>
+          <div style={{ background: '#fff', padding: '20px', borderRadius: '10px', maxWidth: '500px', width: '100%', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+            <h3 style={{ marginTop: 0, color: '#d63031', borderBottom: '2px solid #fab1a0', paddingBottom: '8px' }}>
+              🚨 問題・解答の誤りを報告する
+            </h3>
+            
+            <p style={{ fontSize: '13px', color: '#636e72', margin: '8px 0 14px 0' }}>
+              【{reportingQuestion.subject} 第{reportingQuestion.question_num}問】({reportingQuestion.year})
+            </p>
+
+            <form onSubmit={handleSubmitReport} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px', color: '#2c3e50' }}>報告の種類</label>
+                <select
+                  value={reportType}
+                  onChange={(e) => setReportType(e.target.value)}
+                  style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '5px', fontSize: '14px', background: '#fff' }}
+                >
+                  <option value="正解の誤り">正解の番号が違う</option>
+                  <option value="解説の誤り">解説・判例規範に誤りがある</option>
+                  <option value="問題文の誤字・脱字">問題文に誤字・脱字がある</option>
+                  <option value="その他">その他（レイアウト崩れ等）</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '4px', color: '#2c3e50' }}>詳しい内容</label>
+                <textarea
+                  rows={5}
+                  value={reportDetail}
+                  onChange={(e) => setReportDetail(e.target.value)}
+                  placeholder="例：正解は2となっていますが、公式発表では3です。肢イの解説に誤植があります、等"
+                  style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '5px', boxSizing: 'border-box', fontSize: '13px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setReportingQuestion(null)}
+                  style={{ padding: '8px 16px', background: '#b2bec3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingReport}
+                  style={{ padding: '8px 18px', background: '#e84118', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  {isSendingReport ? '送信中...' : '報告を送信する'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 管理者用：報告一覧確認モーダル */}
+      {isAdmin && showReportsListModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1200 }}>
+          <div style={{ background: '#fff', padding: '20px', borderRadius: '10px', maxWidth: '750px', width: '100%', maxHeight: '85vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #4a69bd', paddingBottom: '8px', marginBottom: '15px' }}>
+              <h3 style={{ margin: 0, color: '#2c3e50' }}>📬 ユーザーからの誤り報告一覧</h3>
+              <button onClick={() => setShowReportsListModal(false)} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}>✕</button>
+            </div>
+
+            {reportsList.length === 0 ? (
+              <p style={{ textAlign: 'center', color: '#7f8fa6', padding: '30px' }}>現在届いている報告はありません。</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {reportsList.map((r) => {
+                  const isResolved = r.status === 'resolved';
+                  return (
+                    <div key={r.id} style={{ background: isResolved ? '#f8f9fa' : '#fff5f5', padding: '14px', borderRadius: '8px', border: `1px solid ${isResolved ? '#dcdde1' : '#fab1a0'}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <div>
+                          <span style={{ fontSize: '12px', background: isResolved ? '#718093' : '#e84118', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
+                            {isResolved ? '対応済み' : '未対応'}
+                          </span>
+                          <span style={{ fontSize: '13px', fontWeight: 'bold', marginLeft: '8px', color: '#2c3e50' }}>
+                            【{r.subject} 第{r.question_num}問】({r.year}) - {r.report_type}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '11px', color: '#7f8fa6' }}>
+                          {new Date(r.created_at).toLocaleString('ja-JP')}
+                        </span>
+                      </div>
+
+                      <p style={{ margin: '8px 0', fontSize: '14px', whiteSpace: 'pre-wrap', color: '#333' }}>
+                        {r.detail}
+                      </p>
+
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                        <button
+                          onClick={() => handleToggleReportStatus(r.id, r.status)}
+                          style={{
+                            padding: '4px 10px',
+                            fontSize: '12px',
+                            background: isResolved ? '#718093' : '#44bd32',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          {isResolved ? '未対応に戻す' : '対応済みにする'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 編集モーダル（管理者のみ）：問題文・正解・解説 */}
       {isAdmin && editingQuestion && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1000 }}>
           <div style={{ background: '#fff', padding: '20px', borderRadius: '10px', maxWidth: '640px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
@@ -1093,7 +1332,6 @@ export default function Home() {
                 />
               </div>
 
-              {/* 各肢ア〜オの解説編集フォーム */}
               <div style={{ borderTop: '1px dashed #b2bec3', paddingTop: '10px', marginTop: '5px' }}>
                 <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#4a69bd' }}>📝 各肢の解説編集 (ア〜オ)</h4>
                 {(['a', 'b', 'c', 'd', 'e'] as const).map((char, idx) => {
