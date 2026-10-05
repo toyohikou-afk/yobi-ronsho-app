@@ -585,6 +585,29 @@ export default function Home() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e1e8ed', paddingBottom: '12px', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <h2 style={{ fontSize: '22px', color: '#2c3e50', margin: 0 }}>予備試験 学習システム</h2>
+          {/* 本番CBT起案室への直行ボタン */}
+          <a
+            href="https://touan-git-main-ufuso.vercel.app/practice"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              backgroundColor: '#0284c7',
+              color: '#ffffff',
+              padding: '5px 12px',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              textDecoration: 'none',
+              boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
+              marginLeft: '8px',
+            }}
+          >
+            <span>✍️ 本番CBT起案室へ</span>
+            <span style={{ fontSize: '11px', opacity: 0.85 }}>↗</span>
+          </a>
           
           {/* 管理者用：報告一覧確認ボタン */}
           {isAdmin && (
