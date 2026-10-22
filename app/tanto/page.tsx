@@ -128,8 +128,41 @@ function TantoPracticeContent() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between p-4 max-w-lg mx-auto select-none">
+      {/* 上部固定ヘッダー */}
       <header className="border-b border-slate-800 pb-3 pt-1">
-        <div className="flex justify-between items-center text-xs mb-2">
+        {/* 常時表示の「前へ・次へ」ナビゲーションバー */}
+        <div className="flex justify-between items-center mb-3">
+          <button
+            onClick={handlePrev}
+            disabled={currentIndex === 0}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition flex items-center gap-1 ${
+              currentIndex === 0
+                ? 'border-slate-800 text-slate-600 bg-slate-900/30 cursor-not-allowed'
+                : 'border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700 active:scale-95'
+            }`}
+          >
+            ◀ 前へ戻る
+          </button>
+
+          <span className="font-bold text-sm text-slate-200">
+            問 {currentIndex + 1} / {questions.length}
+          </span>
+
+          <button
+            onClick={handleNext}
+            disabled={currentIndex === questions.length - 1}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition flex items-center gap-1 ${
+              currentIndex === questions.length - 1
+                ? 'border-slate-800 text-slate-600 bg-slate-900/30 cursor-not-allowed'
+                : 'border-indigo-600 bg-indigo-900/50 text-indigo-200 hover:bg-indigo-800/60 active:scale-95'
+            }`}
+          >
+            次へ進む ▶
+          </button>
+        </div>
+
+        {/* 文字サイズ切替 & 定着率 */}
+        <div className="flex justify-between items-center text-xs">
           <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-lg">
             <span className="text-[10px] text-slate-400 px-1 font-semibold">文字</span>
             <button
@@ -157,21 +190,19 @@ function TantoPracticeContent() {
               特大
             </button>
           </div>
-          <span className={`font-bold text-xs ${accuracy >= 80 ? 'text-emerald-400' : 'text-amber-400'}`}>
-            定着率: {accuracy}%
-          </span>
-        </div>
 
-        <div className="flex justify-between items-center text-xs text-slate-400">
-          <span className="bg-slate-900 border border-slate-800 px-2 py-0.5 rounded font-mono text-indigo-400">
-            {currentQ.summary_tag}
-          </span>
-          <span className="font-semibold text-slate-300">
-            問 {currentIndex + 1} / {questions.length}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="bg-slate-900 border border-slate-800 px-2 py-0.5 rounded font-mono text-indigo-400 text-[11px]">
+              {currentQ.summary_tag}
+            </span>
+            <span className={`font-bold ${accuracy >= 80 ? 'text-emerald-400' : 'text-amber-400'}`}>
+              定着率: {accuracy}%
+            </span>
+          </div>
         </div>
       </header>
 
+      {/* 問題文カード */}
       <main className="my-auto py-3">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-2xl relative">
           <div className="flex items-center justify-between gap-2 mb-3">
@@ -190,6 +221,7 @@ function TantoPracticeContent() {
           </p>
         </div>
 
+        {/* 解答・判定エリア */}
         <div className="mt-4">
           {!isAnswered ? (
             <div className="grid grid-cols-2 gap-3.5">
@@ -238,6 +270,7 @@ function TantoPracticeContent() {
                 </div>
               </div>
 
+              {/* 解答後の戻る・進むボタン */}
               <div className="grid grid-cols-2 gap-3 mt-1">
                 <button
                   onClick={handlePrev}
@@ -245,16 +278,16 @@ function TantoPracticeContent() {
                   className={`h-12 rounded-xl font-bold border transition ${
                     currentIndex === 0
                       ? 'border-slate-800 text-slate-600 bg-slate-900/40 cursor-not-allowed'
-                      : 'border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 active:scale-98'
+                      : 'border-slate-700 bg-slate-800/90 hover:bg-slate-700 text-slate-100 active:scale-98'
                   }`}
                 >
-                  ← 前の肢へ
+                  ◀ 前の肢に戻る
                 </button>
                 <button
                   onClick={handleNext}
                   className="h-12 bg-indigo-600 hover:bg-indigo-500 active:scale-98 rounded-xl font-bold text-white shadow-lg transition"
                 >
-                  {currentIndex < questions.length - 1 ? '次の肢へ →' : '演習結果を確認'}
+                  {currentIndex < questions.length - 1 ? '次の肢へ進む ▶' : '演習結果を確認'}
                 </button>
               </div>
             </div>
@@ -262,25 +295,26 @@ function TantoPracticeContent() {
         </div>
       </main>
 
+      {/* 下部フッター */}
       <footer className="pt-2 flex justify-between items-center text-xs text-slate-500 border-t border-slate-900">
         <button
           onClick={handlePrev}
           disabled={currentIndex === 0}
           className={`py-1 px-2.5 rounded ${
-            currentIndex === 0 ? 'text-slate-700 cursor-not-allowed' : 'text-slate-400 hover:text-slate-200 underline'
+            currentIndex === 0 ? 'text-slate-800 cursor-not-allowed' : 'text-slate-400 hover:text-slate-200 underline'
           }`}
         >
-          ← 前の問に戻る
+          ◀ 前の問へ
         </button>
         <span>短答肢別速攻演習</span>
         <button
           onClick={handleNext}
           disabled={currentIndex === questions.length - 1}
           className={`py-1 px-2.5 rounded ${
-            currentIndex === questions.length - 1 ? 'text-slate-700 cursor-not-allowed' : 'text-slate-400 hover:text-slate-200 underline'
+            currentIndex === questions.length - 1 ? 'text-slate-800 cursor-not-allowed' : 'text-slate-400 hover:text-slate-200 underline'
           }`}
         >
-          スキップ →
+          スキップ ▶
         </button>
       </footer>
     </div>
