@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -119,6 +120,9 @@ function TantoPracticeContent() {
     return (
       <div className="flex h-screen flex-col items-center justify-center bg-slate-950 text-slate-300 p-6 text-center">
         <p className="text-lg font-bold mb-2">該当する問題が見つかりません</p>
+        <Link href="/" className="text-sm text-indigo-400 underline mt-2">
+          ← トップページへ戻る
+        </Link>
       </div>
     );
   }
@@ -130,8 +134,21 @@ function TantoPracticeContent() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between p-4 max-w-lg mx-auto select-none">
       {/* 上部固定ヘッダー */}
       <header className="border-b border-slate-800 pb-3 pt-1">
-        {/* 常時表示の「前へ・次へ」ナビゲーションバー */}
-        <div className="flex justify-between items-center mb-3">
+        {/* トップページへ戻るリンク ＆ 定着率 */}
+        <div className="flex justify-between items-center mb-2.5">
+          <Link
+            href="/"
+            className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 bg-indigo-950/50 border border-indigo-800/60 px-2.5 py-1 rounded-lg transition"
+          >
+            ← 論証集トップへ
+          </Link>
+          <span className={`font-bold text-xs ${accuracy >= 80 ? 'text-emerald-400' : 'text-amber-400'}`}>
+            定着率: {accuracy}%
+          </span>
+        </div>
+
+        {/* 前へ・次へ ナビゲーションバー */}
+        <div className="flex justify-between items-center mb-2.5">
           <button
             onClick={handlePrev}
             disabled={currentIndex === 0}
@@ -161,7 +178,7 @@ function TantoPracticeContent() {
           </button>
         </div>
 
-        {/* 文字サイズ切替 & 定着率 */}
+        {/* 文字サイズ切替 & タグ */}
         <div className="flex justify-between items-center text-xs">
           <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-lg">
             <span className="text-[10px] text-slate-400 px-1 font-semibold">文字</span>
@@ -191,14 +208,9 @@ function TantoPracticeContent() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="bg-slate-900 border border-slate-800 px-2 py-0.5 rounded font-mono text-indigo-400 text-[11px]">
-              {currentQ.summary_tag}
-            </span>
-            <span className={`font-bold ${accuracy >= 80 ? 'text-emerald-400' : 'text-amber-400'}`}>
-              定着率: {accuracy}%
-            </span>
-          </div>
+          <span className="bg-slate-900 border border-slate-800 px-2 py-0.5 rounded font-mono text-indigo-400 text-[11px]">
+            {currentQ.summary_tag}
+          </span>
         </div>
       </header>
 
@@ -270,7 +282,6 @@ function TantoPracticeContent() {
                 </div>
               </div>
 
-              {/* 解答後の戻る・進むボタン */}
               <div className="grid grid-cols-2 gap-3 mt-1">
                 <button
                   onClick={handlePrev}
@@ -295,7 +306,6 @@ function TantoPracticeContent() {
         </div>
       </main>
 
-      {/* 下部フッター */}
       <footer className="pt-2 flex justify-between items-center text-xs text-slate-500 border-t border-slate-900">
         <button
           onClick={handlePrev}
@@ -306,7 +316,9 @@ function TantoPracticeContent() {
         >
           ◀ 前の問へ
         </button>
-        <span>短答肢別速攻演習</span>
+        <Link href="/" className="hover:text-slate-300">
+          短答肢別速攻演習
+        </Link>
         <button
           onClick={handleNext}
           disabled={currentIndex === questions.length - 1}

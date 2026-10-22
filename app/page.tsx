@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { supabase } from './lib/supabase';
 
 // === 文字サイズの状態定義 ===
@@ -25,16 +26,12 @@ const textSizeClasses: Record<TextScale, { question: string; option: string; exp
 };
 
 export default function Home() {
-  // === 文字サイズ切替用ステート ===
   const [textScale, setTextScale] = useState<TextScale>('normal');
-
-  // === 管理者フラグ ===
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminPasscode, setAdminPasscode] = useState('');
 
-  // === タブ切り替え ('tantou' or 'ronsho') ===
   const [activeTab, setActiveTab] = useState<'tantou' | 'ronsho'>('tantou');
 
-  // === 短答ドリル用ステート ===
   const [questions, setQuestions] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -42,54 +39,44 @@ export default function Home() {
   const [isAnswered, setIsAnswered] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
-  // 正答率カウンター用ステート
   const [totalAttempts, setTotalAttempts] = useState(0);
   const [correctAttempts, setCorrectAttempts] = useState(0);
 
-  // 復習（間違えた問題）管理用ステート
   const [mistakeIds, setMistakeIds] = useState<number[]>([]);
   const [onlyMistake, setOnlyMistake] = useState(false);
 
-  // ア〜オ個別入力用ステート
   const [isMultiChoiceMode, setIsMultiChoiceMode] = useState(false);
   const [activeItemCount, setActiveItemCount] = useState<number>(5);
   const [subAnswers, setSubAnswers] = useState<{ [key: string]: string }>({
     ア: '', イ: '', ウ: '', エ: '', オ: ''
   });
   
-  // フィルター用
   const [years, setYears] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
   const [selectedYear, setSelectedYear] = useState('ALL');
   const [selectedSubject, setSelectedSubject] = useState('ALL');
   const [onlyFrequent, setOnlyFrequent] = useState(false);
 
-  // 編集用モーダル
   const [editingQuestion, setEditingQuestion] = useState<any | null>(null);
 
-  // === 誤り報告機能用ステート ===
   const [reportingQuestion, setReportingQuestion] = useState<any | null>(null);
   const [reportType, setReportType] = useState('正解の誤り');
   const [reportDetail, setReportDetail] = useState('');
   const [isSendingReport, setIsSendingReport] = useState(false);
 
-  // === 管理者用：報告一覧確認モーダル ===
   const [showReportsListModal, setShowReportsListModal] = useState(false);
   const [reportsList, setReportsList] = useState<any[]>([]);
   const [pendingReportsCount, setPendingReportsCount] = useState(0);
 
-  // === 論文（論証カード）用ステート ===
   const [prompt, setPrompt] = useState('【会社法】取締役の競業避止義務（356条1項1号）の該当性と損害額の算定について、判例をベースに出力して。');
   const [result, setResult] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [cards, setCards] = useState<any[]>([]);
   
-  // 論文カードフィルター＆検索用
   const [selectedCardSubject, setSelectedCardSubject] = useState('ALL');
   const [cardSearchKeyword, setCardSearchKeyword] = useState('');
 
-  // カード編集用
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editSubject, setEditSubject] = useState('');
   const [editTitle, setEditTitle] = useState('');
@@ -97,9 +84,6 @@ export default function Home() {
   const [editKihan, setEditKihan] = useState('');
   const [editAtehame, setEditAtehame] = useState('');
 
-  // ==========================================
-  // 初期化・認証処理
-  // ==========================================
   useEffect(() => {
     const savedScale = localStorage.getItem('yobi_text_scale') as TextScale;
     if (savedScale && textSizeClasses[savedScale]) {
@@ -122,7 +106,9 @@ export default function Home() {
         const data = await res.json();
         if (data.success) {
           localStorage.setItem('yobi_is_admin', 'true');
+          localStorage.setItem('yobi_admin_passcode', passcode);
           setIsAdmin(true);
+          setAdminPasscode(passcode);
           alert('🔑 管理者権限を有効化しました（このブラウザに記憶されます）');
         } else {
           alert(`❌ 認証エラー: ${data.error || '通信に失敗しました'}`);
@@ -142,11 +128,14 @@ export default function Home() {
           verifyPasscode(queryPass);
         } else if (params.get('logout') === 'true') {
           localStorage.removeItem('yobi_is_admin');
+          localStorage.removeItem('yobi_admin_passcode');
           setIsAdmin(false);
+          setAdminPasscode('');
           window.history.replaceState({}, '', window.location.pathname);
           alert('🔒 管理者権限を解除しました');
         } else if (localStorage.getItem('yobi_is_admin') === 'true') {
           setIsAdmin(true);
+          setAdminPasscode(localStorage.getItem('yobi_admin_passcode') || '');
         }
       }
 
@@ -159,7 +148,6 @@ export default function Home() {
     }
   }, []);
 
-  // 管理者用：報告一覧の取得
   const fetchReports = async () => {
     const { data } = await supabase
       .from('question_reports')
@@ -204,9 +192,6 @@ export default function Home() {
     setCorrectAttempts(0);
   };
 
-  // ==========================================
-  // 短答ドリル系の処理
-  // ==========================================
   const fetchFilterOptions = async () => {
     const { data: yearData } = await supabase.from('tantou_questions').select('year').not('year', 'is', null);
     if (yearData) {
@@ -345,7 +330,6 @@ export default function Home() {
     }
   };
 
-  // 誤り報告の送信処理
   const handleSubmitReport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reportingQuestion) return;
@@ -381,7 +365,6 @@ export default function Home() {
     }
   };
 
-  // 管理者：報告ステータスの切り替え
   const handleToggleReportStatus = async (reportId: number, currentStatus: string) => {
     const newStatus = currentStatus === 'pending' ? 'resolved' : 'pending';
     const { error } = await supabase
@@ -399,16 +382,30 @@ export default function Home() {
   const handleDeleteQuestion = async (id: number) => {
     if (!isAdmin) return;
     if (!confirm('本当にこの問題を削除しますか？')) return;
-    const { error } = await supabase.from('tantou_questions').delete().eq('id', id);
-    if (error) {
-      alert('削除に失敗しました: ' + error.message);
-    } else {
+
+    try {
+      const res = await fetch('/api/admin/question', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-passcode': adminPasscode || localStorage.getItem('yobi_admin_passcode') || '',
+        },
+        body: JSON.stringify({ id }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || '削除に失敗しました');
+      }
+
       alert('削除しました');
       const updated = questions.filter((q) => q.id !== id);
       setQuestions(updated);
       if (currentIndex >= updated.length && currentIndex > 0) {
         setCurrentIndex(currentIndex - 1);
       }
+    } catch (err: any) {
+      alert('削除エラー: ' + err.message);
     }
   };
 
@@ -416,28 +413,38 @@ export default function Home() {
     e.preventDefault();
     if (!isAdmin || !editingQuestion) return;
 
-    const { error } = await supabase
-      .from('tantou_questions')
-      .update({
-        question_text: editingQuestion.question_text,
-        answer: editingQuestion.answer,
-        subject: editingQuestion.subject,
-        year: editingQuestion.year,
-        question_num: editingQuestion.question_num,
-        explanation_a: editingQuestion.explanation_a || '',
-        explanation_b: editingQuestion.explanation_b || '',
-        explanation_c: editingQuestion.explanation_c || '',
-        explanation_d: editingQuestion.explanation_d || '',
-        explanation_e: editingQuestion.explanation_e || '',
-      })
-      .eq('id', editingQuestion.id);
+    try {
+      const res = await fetch('/api/admin/question', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-passcode': adminPasscode || localStorage.getItem('yobi_admin_passcode') || '',
+        },
+        body: JSON.stringify({
+          id: editingQuestion.id,
+          question_text: editingQuestion.question_text,
+          answer: editingQuestion.answer,
+          subject: editingQuestion.subject,
+          year: editingQuestion.year,
+          question_num: editingQuestion.question_num,
+          explanation_a: editingQuestion.explanation_a || '',
+          explanation_b: editingQuestion.explanation_b || '',
+          explanation_c: editingQuestion.explanation_c || '',
+          explanation_d: editingQuestion.explanation_d || '',
+          explanation_e: editingQuestion.explanation_e || '',
+        }),
+      });
 
-    if (error) {
-      alert('更新に失敗しました: ' + error.message);
-    } else {
-      alert('更新しました');
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || '更新に失敗しました');
+      }
+
+      alert('更新しました！');
       setQuestions(questions.map((q) => (q.id === editingQuestion.id ? editingQuestion : q)));
       setEditingQuestion(null);
+    } catch (err: any) {
+      alert('更新エラー: ' + err.message);
     }
   };
 
@@ -450,9 +457,6 @@ export default function Home() {
     window.scrollTo(0, 0);
   };
 
-  // ==========================================
-  // 論文（論証カード）系の処理
-  // ==========================================
   const fetchCards = async () => {
     const { data } = await supabase.from('ronsho_cards').select('*').order('created_at', { ascending: false });
     if (data) setCards(data);
@@ -581,35 +585,11 @@ export default function Home() {
   return (
     <div style={{ fontFamily: 'sans-serif', padding: '15px', maxWidth: '800px', margin: 'auto', backgroundColor: '#f5f6fa', color: '#333', minHeight: '100vh', boxSizing: 'border-box' }}>
       
-      {/* ヘッダー ＆ タブ切り替え ＆ 文字サイズコントロール */}
+      {/* ヘッダー ＆ タブ切り替え */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e1e8ed', paddingBottom: '12px', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <h2 style={{ fontSize: '22px', color: '#2c3e50', margin: 0 }}>予備試験 学習システム</h2>
-          {/* 本番CBT起案室への直行ボタン */}
-          <a
-            href="https://touan-git-main-ufuso.vercel.app/practice"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              backgroundColor: '#0284c7',
-              color: '#ffffff',
-              padding: '5px 12px',
-              borderRadius: '6px',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              textDecoration: 'none',
-              boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
-              marginLeft: '8px',
-            }}
-          >
-            <span>✍️ 本番CBT起案室へ</span>
-            <span style={{ fontSize: '11px', opacity: 0.85 }}>↗</span>
-          </a>
           
-          {/* 管理者用：報告一覧確認ボタン */}
           {isAdmin && (
             <button
               onClick={() => setShowReportsListModal(true)}
@@ -632,7 +612,6 @@ export default function Home() {
           )}
         </div>
         
-        {/* スマホ対応 文字サイズ変更コントロール */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#e1e8ed', padding: '3px 6px', borderRadius: '6px', border: '1px solid #b2bec3' }}>
           <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#555' }}>文字:</span>
           {(['normal', 'medium', 'large'] as TextScale[]).map((scale) => {
@@ -660,26 +639,47 @@ export default function Home() {
           })}
         </div>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
           <button
             onClick={() => setActiveTab('tantou')}
-            style={{ padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'tantou' ? '#4a69bd' : '#fff', color: activeTab === 'tantou' ? '#fff' : '#4a69bd', border: '1px solid #4a69bd' }}
+            style={{ padding: '8px 14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'tantou' ? '#4a69bd' : '#fff', color: activeTab === 'tantou' ? '#fff' : '#4a69bd', border: '1px solid #4a69bd', fontSize: '13px' }}
           >
             短答過去問 (yobi_db)
           </button>
           <button
             onClick={() => setActiveTab('ronsho')}
-            style={{ padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'ronsho' ? '#4a69bd' : '#fff', color: activeTab === 'ronsho' ? '#fff' : '#4a69bd', border: '1px solid #4a69bd' }}
+            style={{ padding: '8px 14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', background: activeTab === 'ronsho' ? '#4a69bd' : '#fff', color: activeTab === 'ronsho' ? '#fff' : '#4a69bd', border: '1px solid #4a69bd', fontSize: '13px' }}
           >
             論文・論証カード (anki)
           </button>
+          
+          {/* 短答肢別速攻演習へのリンク */}
+          <Link
+            href="/tanto"
+            style={{
+              padding: '8px 14px',
+              borderRadius: '6px',
+              fontWeight: 'bold',
+              background: 'linear-gradient(135deg, #10b981, #059669)',
+              color: '#ffffff',
+              border: 'none',
+              fontSize: '13px',
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            }}
+          >
+            <span>📝 短答肢別演習 (30問)</span>
+            <span style={{ fontSize: '10px', background: '#064e3b', color: '#a7f3d0', padding: '1px 5px', borderRadius: '10px' }}>New</span>
+          </Link>
         </div>
       </div>
 
       {/* 1. 短答過去問タブ */}
       {activeTab === 'tantou' && (
         <div>
-          {/* フィルターパネル */}
           <div style={{ background: '#fff', padding: '12px', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', justifyContent: 'space-between', border: '2px solid #4a69bd' }}>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} style={{ padding: '6px 10px', borderRadius: '5px', border: '1px solid #4a69bd', fontSize: '14px', background: '#fff', color: '#2c3e50', fontWeight: 'bold', cursor: 'pointer' }}>
@@ -703,7 +703,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 成績カウンター ＆ 復習一括リセットバー */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #dcdde1', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#2c3e50' }}>
@@ -742,13 +741,10 @@ export default function Home() {
             </div>
           ) : (
             <>
-              {/* 問題文ボックス */}
               <div style={{ background: '#ffffff', padding: '20px', borderRadius: '12px', marginBottom: '15px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', borderLeft: isMarkedMistake ? '5px solid #e84118' : '5px solid #4a69bd' }}>
                 <h3 style={{ color: '#4a69bd', fontSize: '18px', marginTop: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                   <span>【{question.subject} 第{question.question_num}問】({displayYear})</span>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    
-                    {/* 利用者全員が押せる「誤りを報告」ボタン */}
                     <button
                       onClick={() => setReportingQuestion(question)}
                       style={{
@@ -783,7 +779,6 @@ export default function Home() {
                     </button>
                     <span style={{ fontSize: '12px', background: '#e3f2fd', color: '#0d47a1', padding: '2px 8px', borderRadius: '4px' }}>ID: {question.id}</span>
                     
-                    {/* 管理者のみ編集・削除ボタンを表示 */}
                     {isAdmin && (
                       <>
                         <button
@@ -802,13 +797,11 @@ export default function Home() {
                     )}
                   </div>
                 </h3>
-                {/* 拡大対応した問題文 */}
                 <div className={textSizeClasses[textScale].question} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', color: '#333' }}>
                   {question.question_text}
                 </div>
               </div>
 
-              {/* 前へ・次へページネーションボタン */}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
                 <button
                   onClick={handlePrev}
@@ -829,7 +822,6 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* 解答形式手動切り替えバー */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
                 <button
                   onClick={() => setIsMultiChoiceMode(!isMultiChoiceMode)}
@@ -839,7 +831,6 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* 解答入力・判定エリア */}
               {!isAnswered ? (
                 <div>
                   {isMultiChoiceMode ? (
@@ -972,7 +963,7 @@ export default function Home() {
                       </p>
 
                       {question.answer.replace(/[^0-9]/g, '').length >= 3 && (
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', margin: '12px 0', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'center', justifyContent: 'center', gap: '8px', margin: '12px 0', flexWrap: 'wrap' }}>
                           {allLabels.slice(0, question.answer.replace(/[^0-9]/g, '').length).map((lbl, i) => {
                             const correctChar = question.answer.replace(/[^0-9]/g, '')[i];
                             const userChar = userAnswer[i] || '-';
@@ -988,7 +979,6 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* AI連携ボタン */}
                   <div style={{ marginTop: '20px' }}>
                     <button onClick={handleSendToAI} style={{ background: 'linear-gradient(135deg, #6c5ce7, #a29bfe)', color: 'white', border: 'none', padding: '12px 20px', borderRadius: '10px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
                       ✨ この問題をAIで「論証カード」にする
@@ -999,7 +989,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* 拡大対応した解説アコーディオン */}
               {isAnswered && (
                 <div style={{ marginTop: '20px' }}>
                   {['a', 'b', 'c', 'd', 'e'].map((char, idx) => {
@@ -1023,7 +1012,6 @@ export default function Home() {
       {/* 2. 論文・論証カードタブ */}
       {activeTab === 'ronsho' && (
         <div>
-          {/* 生成入力ボックス */}
           <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', marginBottom: '20px', border: '2px solid #4a69bd' }}>
             <label style={{ display: 'block', fontSize: '15px', fontWeight: 'bold', marginBottom: '8px', color: '#2c3e50' }}>論文プロンプト入力</label>
             <textarea
@@ -1046,7 +1034,6 @@ export default function Home() {
                   {JSON.stringify(result, null, 2)}
                 </pre>
                 
-                {/* 管理者のみ保存ボタンを表示 */}
                 {isAdmin && (
                   <button
                     onClick={handleSave}
@@ -1060,7 +1047,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* 論文カード フィルター＆検索バー */}
           <div style={{ background: '#fff', padding: '12px 16px', borderRadius: '10px', border: '2px solid #4a69bd', marginBottom: '15px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flex: '1 1 200px' }}>
               <select
@@ -1094,7 +1080,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* カード一覧ヘッダー */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #4a69bd', paddingBottom: '6px', marginBottom: '15px' }}>
             <h3 style={{ color: '#2c3e50', margin: 0 }}>📚 蓄積された論証カード</h3>
             <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#7f8fa6' }}>
@@ -1138,7 +1123,6 @@ export default function Home() {
                         )}
                       </div>
                       
-                      {/* 管理者のみ編集・削除ボタンを表示 */}
                       {isAdmin && (
                         <div style={{ display: 'flex', gap: '6px' }}>
                           {isEditing ? (
@@ -1188,7 +1172,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 誤り報告モーダル（一般利用者・管理者共通） */}
+      {/* 誤り報告モーダル */}
       {reportingQuestion && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1100 }}>
           <div style={{ background: '#fff', padding: '20px', borderRadius: '10px', maxWidth: '500px', width: '100%', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
@@ -1308,7 +1292,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 編集モーダル（管理者のみ）：問題文・正解・解説 */}
+      {/* 編集モーダル */}
       {isAdmin && editingQuestion && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1000 }}>
           <div style={{ background: '#fff', padding: '20px', borderRadius: '10px', maxWidth: '640px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
