@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
@@ -26,6 +26,10 @@ function TantoPracticeContent() {
   const searchParams = useSearchParams();
   const summaryParam = searchParams.get('summary') || 'DAY001_CAPACITY';
 
+  const [syncKey, setSyncKey] = useState<string>('ufu');
+  const [isEditingKey, setIsEditingKey] = useState(false);
+  const [tempKey, setTempKey] = useState('ufu');
+
   const [questions, setQuestions] = useState<TantoQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<number, boolean>>({});
@@ -33,61 +37,150 @@ function TantoPracticeContent() {
   const [streak, setStreak] = useState(0);
   const [stats, setStats] = useState({ correct: 0, total: 0 });
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
+  // 1. 同期キーの初期化（localStorageから読込）
   useEffect(() => {
-    async function loadQuestions() {
+    const savedKey = localStorage.getItem('yobi_tanto_synckey');
+    if (savedKey) {
+      setSyncKey(savedKey);
+      setTempKey(savedKey);
+    }
+  }, []);
+
+  // 2. 問題取得 ＆ クラウドから中断進捗をロード
+  useEffect(() => {
+    async function loadData() {
       setLoading(true);
-      const { data, error } = await supabase
+
+      // 問題の読み込み
+      const { data: qData } = await supabase
         .from('tanto_questions')
         .select('*')
         .eq('summary_tag', summaryParam)
         .order('id', { ascending: true })
         .limit(30);
 
-      if (data && !error && data.length > 0) {
-        setQuestions(data);
+      let loadedQuestions: TantoQuestion[] = [];
+      if (qData && qData.length > 0) {
+        loadedQuestions = qData;
       } else {
-        const { data: fallbackData } = await supabase
+        const { data: fallback } = await supabase
           .from('tanto_questions')
           .select('*')
           .in('topic', ['行為能力', '意思能力', '詐術'])
           .limit(30);
-        if (fallbackData) setQuestions(fallbackData);
+        if (fallback) loadedQuestions = fallback;
       }
+      setQuestions(loadedQuestions);
+
+      // クラウド（Supabase）から中断データの取得
+      const { data: syncData } = await supabase
+        .from('user_sync_progress')
+        .select('*')
+        .eq('sync_key', syncKey)
+        .eq('summary_tag', summaryParam)
+        .maybeSingle();
+
+      if (syncData) {
+        // クラウドの中断地点から再開
+        const restoredIndex = syncData.current_index < loadedQuestions.length ? syncData.current_index : 0;
+        setCurrentIndex(restoredIndex);
+        setUserAnswers(syncData.user_answers || {});
+        setStats({ correct: syncData.correct_count || 0, total: syncData.total_count || 0 });
+        setStreak(syncData.streak || 0);
+      }
+
       setLoading(false);
     }
-    loadQuestions();
-  }, [summaryParam]);
+
+    loadData();
+  }, [summaryParam, syncKey]);
+
+  // 3. クラウドに進捗を保存・同期する関数
+  const saveSyncProgress = useCallback(
+    async (newIndex: number, newAnswers: Record<number, boolean>, newCorrect: number, newTotal: number, newStreak: number) => {
+      setSyncing(true);
+      try {
+        await supabase.from('user_sync_progress').upsert({
+          sync_key: syncKey,
+          summary_tag: summaryParam,
+          current_index: newIndex,
+          user_answers: newAnswers,
+          correct_count: newCorrect,
+          total_count: newTotal,
+          streak: newStreak,
+          updated_at: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.error('同期エラー:', err);
+      } finally {
+        setSyncing(false);
+      }
+    },
+    [syncKey, summaryParam]
+  );
 
   const currentQ = questions[currentIndex];
   const selectedAnswer = userAnswers[currentIndex] ?? null;
   const isAnswered = selectedAnswer !== null;
 
+  // 解答時
   const handleSelect = (choice: boolean) => {
     if (isAnswered || !currentQ) return;
 
-    setUserAnswers((prev) => ({ ...prev, [currentIndex]: choice }));
+    const newAnswers = { ...userAnswers, [currentIndex]: choice };
+    setUserAnswers(newAnswers);
 
-    const isCorrect = choice === currentQ.correct_answer;
-    setStats((prev) => ({
-      correct: prev.correct + (isCorrect ? 1 : 0),
-      total: prev.total + 1,
-    }));
-    setStreak((prev) => (isCorrect ? prev + 1 : 0));
+    const isCorr = choice === currentQ.correct_answer;
+    const newCorrect = stats.correct + (isCorr ? 1 : 0);
+    const newTotal = stats.total + 1;
+    const newStreak = isCorr ? streak + 1 : 0;
+
+    setStats({ correct: newCorrect, total: newTotal });
+    setStreak(newStreak);
+
+    // 回答直後にクラウドへ同期
+    saveSyncProgress(currentIndex, newAnswers, newCorrect, newTotal, newStreak);
   };
 
+  // 前の肢へ
   const handlePrev = () => {
     if (currentIndex > 0) {
-      setCurrentIndex((prev) => prev - 1);
+      const nextIdx = currentIndex - 1;
+      setCurrentIndex(nextIdx);
+      saveSyncProgress(nextIdx, userAnswers, stats.correct, stats.total, streak);
     }
   };
 
+  // 次の肢へ
   const handleNext = () => {
     if (currentIndex < questions.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
+      const nextIdx = currentIndex + 1;
+      setCurrentIndex(nextIdx);
+      saveSyncProgress(nextIdx, userAnswers, stats.correct, stats.total, streak);
     } else {
       alert(`🎉 演習完了！ 正解数: ${stats.correct} / ${questions.length}`);
     }
+  };
+
+  // 演習リセット（1問目からやり直す）
+  const handleResetSession = async () => {
+    if (!confirm('この単元の進捗をリセットして第1問からやり直しますか？')) return;
+    setCurrentIndex(0);
+    setUserAnswers({});
+    setStats({ correct: 0, total: 0 });
+    setStreak(0);
+    await saveSyncProgress(0, {}, 0, 0, 0);
+  };
+
+  // 同期キー変更の保存
+  const handleSaveSyncKey = () => {
+    if (!tempKey.trim()) return;
+    const cleanKey = tempKey.trim();
+    setSyncKey(cleanKey);
+    localStorage.setItem('yobi_tanto_synckey', cleanKey);
+    setIsEditingKey(false);
   };
 
   const fontStyles = {
@@ -111,7 +204,7 @@ function TantoPracticeContent() {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-950 text-slate-400 font-mono text-sm">
-        問題を読み込み中...
+        前回の学習進捗を同期中...
       </div>
     );
   }
@@ -121,7 +214,7 @@ function TantoPracticeContent() {
       <div className="flex h-screen flex-col items-center justify-center bg-slate-950 text-slate-300 p-6 text-center">
         <p className="text-lg font-bold mb-2">該当する問題が見つかりません</p>
         <Link href="/" className="text-sm text-indigo-400 underline mt-2">
-          ← トップページへ戻る
+          ← 論証集トップへ戻る
         </Link>
       </div>
     );
@@ -134,18 +227,53 @@ function TantoPracticeContent() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between p-4 max-w-lg mx-auto select-none">
       {/* 上部固定ヘッダー */}
       <header className="border-b border-slate-800 pb-3 pt-1">
-        {/* トップページへ戻るリンク ＆ 定着率 */}
+        {/* ナビゲーション ＆ クラウド同期インジケーター */}
         <div className="flex justify-between items-center mb-2.5">
           <Link
             href="/"
             className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 bg-indigo-950/50 border border-indigo-800/60 px-2.5 py-1 rounded-lg transition"
           >
-            ← 論証集トップへ
+            ← 論証集トップ
           </Link>
-          <span className={`font-bold text-xs ${accuracy >= 80 ? 'text-emerald-400' : 'text-amber-400'}`}>
-            定着率: {accuracy}%
-          </span>
+
+          {/* 同期キー設定 ＆ 同期状態 */}
+          <div className="flex items-center gap-1.5 text-[11px]">
+            {syncing ? (
+              <span className="text-amber-400 animate-pulse font-mono">クラウド同期中...</span>
+            ) : (
+              <span className="text-emerald-400 font-mono flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>同期完了
+              </span>
+            )}
+            <button
+              onClick={() => setIsEditingKey(!isEditingKey)}
+              className="text-slate-400 hover:text-slate-200 underline font-mono ml-1"
+              title="PCとスマホで同じIDを設定すると進捗が共有されます"
+            >
+              [{syncKey}]
+            </button>
+          </div>
         </div>
+
+        {/* 同期キー編集入力バー */}
+        {isEditingKey && (
+          <div className="flex items-center gap-1 mb-2.5 bg-slate-900 border border-slate-700 p-2 rounded-lg text-xs">
+            <span className="text-slate-300 font-semibold">同期ID:</span>
+            <input
+              type="text"
+              value={tempKey}
+              onChange={(e) => setTempKey(e.target.value)}
+              placeholder="例: ufu"
+              className="bg-slate-800 border border-slate-600 px-2 py-1 rounded text-white flex-1 font-mono text-xs"
+            />
+            <button
+              onClick={handleSaveSyncKey}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-2.5 py-1 rounded"
+            >
+              設定
+            </button>
+          </div>
+        )}
 
         {/* 前へ・次へ ナビゲーションバー */}
         <div className="flex justify-between items-center mb-2.5">
@@ -178,7 +306,7 @@ function TantoPracticeContent() {
           </button>
         </div>
 
-        {/* 文字サイズ切替 & タグ */}
+        {/* 文字サイズ切替 & 定着率 & 最初からやり直す */}
         <div className="flex justify-between items-center text-xs">
           <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-lg">
             <span className="text-[10px] text-slate-400 px-1 font-semibold">文字</span>
@@ -208,9 +336,18 @@ function TantoPracticeContent() {
             </button>
           </div>
 
-          <span className="bg-slate-900 border border-slate-800 px-2 py-0.5 rounded font-mono text-indigo-400 text-[11px]">
-            {currentQ.summary_tag}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`font-bold ${accuracy >= 80 ? 'text-emerald-400' : 'text-amber-400'}`}>
+              定着率: {accuracy}%
+            </span>
+            <button
+              onClick={handleResetSession}
+              className="text-[11px] text-slate-400 hover:text-rose-400 underline ml-1"
+              title="この単元の進捗をリセット"
+            >
+              最初から
+            </button>
+          </div>
         </div>
       </header>
 
@@ -306,6 +443,7 @@ function TantoPracticeContent() {
         </div>
       </main>
 
+      {/* 下部フッター */}
       <footer className="pt-2 flex justify-between items-center text-xs text-slate-500 border-t border-slate-900">
         <button
           onClick={handlePrev}
@@ -316,9 +454,7 @@ function TantoPracticeContent() {
         >
           ◀ 前の問へ
         </button>
-        <Link href="/" className="hover:text-slate-300">
-          短答肢別速攻演習
-        </Link>
+        <span className="font-mono text-[11px] text-slate-500">{currentQ.summary_tag}</span>
         <button
           onClick={handleNext}
           disabled={currentIndex === questions.length - 1}
@@ -335,7 +471,7 @@ function TantoPracticeContent() {
 
 export default function TantoPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-950 text-slate-400 p-4">読み込み中...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-slate-950 text-slate-400 p-4">進捗を同期中...</div>}>
       <TantoPracticeContent />
     </Suspense>
   );
