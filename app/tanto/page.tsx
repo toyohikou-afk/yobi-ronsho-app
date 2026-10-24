@@ -9,7 +9,6 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// 全科目 & SUMMARY日程マッピング
 interface SummaryItem {
   tag: string;
   label: string;
@@ -31,6 +30,8 @@ const SUBJECT_SUMMARIES: Record<string, SummaryItem[]> = {
     { tag: 'DAY012_SECURITY_MORTGAGE', label: 'Day 12: 抵当権・物上代位・法定地上権' },
     { tag: 'DAY013_PLEDGE_LIEN', label: 'Day 13: 留置権・先取特権・質権・譲渡担保' },
     { tag: 'DAY014_PROPERTY_SUMMARY', label: 'Day 14: 物権総括・担保物権総合・要件事実' },
+    { tag: 'DAY015_OBLIGATION_GENERAL', label: 'Day 15: 債権の目的・債務不履行・損害賠償' },
+    { tag: 'DAY016_ASSET_PROTECTION', label: 'Day 16: 責任財産の保全（代位権・詐害取消）' },
   ],
   '憲法': [
     { tag: 'DAY050_CONST_RIGHTS', label: 'Day 50: 精神的自由・表現の自由・事前抑制' },
@@ -78,7 +79,6 @@ function TantoPracticeContent() {
   const searchParams = useSearchParams();
   const currentSummaryTag = searchParams.get('summary') || 'DAY001_CAPACITY';
 
-  // 現在のタグが所属する科目を特定
   const initialSubject = useMemo(() => {
     for (const [subj, list] of Object.entries(SUBJECT_SUMMARIES)) {
       if (list.some((item) => item.tag === currentSummaryTag)) return subj;
@@ -213,7 +213,6 @@ function TantoPracticeContent() {
     }
   };
 
-  // 1. 科目を切り替えたときの処理
   const handleSubjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newSubj = e.target.value;
     setSelectedSubject(newSubj);
@@ -223,7 +222,6 @@ function TantoPracticeContent() {
     }
   };
 
-  // 2. SUMMARY を切り替えたときの処理
   const handleSummaryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     router.push(`/tanto?summary=${e.target.value}`);
   };
@@ -275,9 +273,7 @@ function TantoPracticeContent() {
           </div>
         </div>
 
-        {/* 2段階選択：科目 ➜ SUMMARY */}
         <div className="grid grid-cols-5 gap-2 mb-2.5">
-          {/* ① 科目選択 */}
           <div className="col-span-2">
             <label className="text-[10px] text-slate-400 font-bold block mb-1">① 科目</label>
             <select
@@ -293,7 +289,6 @@ function TantoPracticeContent() {
             </select>
           </div>
 
-          {/* ② SUMMARY 選択 */}
           <div className="col-span-3">
             <label className="text-[10px] text-slate-400 font-bold block mb-1">② 学習日程 SUMMARY</label>
             <select
@@ -334,7 +329,6 @@ function TantoPracticeContent() {
           </div>
         )}
 
-        {/* 前へ・次へ ナビゲーションバー */}
         <div className="flex justify-between items-center mb-2">
           <button
             onClick={handlePrev}
@@ -379,12 +373,11 @@ function TantoPracticeContent() {
         </div>
       </header>
 
-      {/* 問題文カード */}
       <main className="my-auto py-3">
         {questions.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center text-slate-300">
             <p className="font-bold text-base mb-1">このSUMMARYの問題は現在準備中です</p>
-            <p className="text-xs text-slate-500">下記のSQLを実行して問題データを投入してください。</p>
+            <p className="text-xs text-slate-500">Supabase SQL Editorで問題データを投入してください。</p>
           </div>
         ) : (
           <>
