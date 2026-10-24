@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense, useCallback } from 'react';
+import React, { useState, useEffect, Suspense, useCallback, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
@@ -9,16 +9,56 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// 日程表 Day 1〜7 の定義
-const SUMMARY_OPTIONS = [
-  { tag: 'DAY001_CAPACITY', label: 'Day 1: 行為能力・意思能力・詐術' },
-  { tag: 'DAY002_FALSE_REPR', label: 'Day 2: 虚偽表示・94条2項類推適用' },
-  { tag: 'DAY003_MISTAKE_FRAUD', label: 'Day 3: 錯誤・詐欺取消と第三者・登記' },
-  { tag: 'DAY004_AGENCY', label: 'Day 4: 代理全体系・代理権濫用・表見代理' },
-  { tag: 'DAY005_PRESCRIPTION', label: 'Day 5: 消滅時効・援用権者・信義則' },
-  { tag: 'DAY006_GENERAL_MIX', label: 'Day 6: 総則総合演習（複雑論点）' },
-  { tag: 'DAY007_SUMMARY_FACTS', label: 'Day 7: 民法総則総括・要件事実まとめ' },
-];
+// 全科目 & SUMMARY日程マッピング
+interface SummaryItem {
+  tag: string;
+  label: string;
+}
+
+const SUBJECT_SUMMARIES: Record<string, SummaryItem[]> = {
+  '民法': [
+    { tag: 'DAY001_CAPACITY', label: 'Day 1: 行為能力・意思能力・詐術' },
+    { tag: 'DAY002_FALSE_REPR', label: 'Day 2: 虚偽表示・94条2項類推適用' },
+    { tag: 'DAY003_MISTAKE_FRAUD', label: 'Day 3: 錯誤・詐欺取消と第三者・登記' },
+    { tag: 'DAY004_AGENCY', label: 'Day 4: 代理全体系・代理権濫用・表見代理' },
+    { tag: 'DAY005_PRESCRIPTION', label: 'Day 5: 消滅時効・援用権者・信義則' },
+    { tag: 'DAY006_GENERAL_MIX', label: 'Day 6: 総則総合演習（複雑論点）' },
+    { tag: 'DAY007_SUMMARY_FACTS', label: 'Day 7: 民法総則総括・要件事実まとめ' },
+    { tag: 'DAY008_PROPERTY_177', label: 'Day 8: 物権変動・177条第三者・背信的悪意者' },
+    { tag: 'DAY009_ACQUISITION', label: 'Day 9: 取得時効・即時取得・動産物権変動' },
+    { tag: 'DAY010_POSSESSION', label: 'Day 10: 占有権・占有訴権・果実収取権' },
+    { tag: 'DAY011_CO_OWNERSHIP', label: 'Day 11: 共有・共有物分割（令和3年改正）' },
+    { tag: 'DAY012_SECURITY_MORTGAGE', label: 'Day 12: 抵当権・物上代位・法定地上権' },
+    { tag: 'DAY013_PLEDGE_LIEN', label: 'Day 13: 留置権・先取特権・質権・譲渡担保' },
+    { tag: 'DAY014_PROPERTY_SUMMARY', label: 'Day 14: 物権総括・担保物権総合・要件事実' },
+  ],
+  '憲法': [
+    { tag: 'DAY050_CONST_RIGHTS', label: 'Day 50: 精神的自由・表現の自由・事前抑制' },
+    { tag: 'DAY051_CONST_EQUALITY', label: 'Day 51: 法の下の平等・14条1項後段' },
+    { tag: 'DAY052_CONST_GOV', label: 'Day 52: 統治機構・司法権・違憲審査権' },
+  ],
+  '刑法': [
+    { tag: 'DAY070_CRIM_CAUSATION', label: 'Day 70: 因果関係・危険の現実化' },
+    { tag: 'DAY071_CRIM_DEFENSE', label: 'Day 71: 正当防衛・侵害の急迫性・防衛の意思' },
+    { tag: 'DAY072_CRIM_PROPERTY', label: 'Day 72: 財産犯・窃盗と占有・横領と背任' },
+  ],
+  '会社法・商法': [
+    { tag: 'DAY090_CORP_ORG', label: 'Day 90: 株式会社の設立・株式・新株発行' },
+    { tag: 'DAY091_CORP_DIRECTORS', label: 'Day 91: 取締役の義務・競業避止・利益相反' },
+  ],
+  '民事訴訟法': [
+    { tag: 'DAY110_CIVPRO_JURISDICTION', label: 'Day 110: 管轄・当事者適格・二重起訴' },
+    { tag: 'DAY111_CIVPRO_RES_JUDICATA', label: 'Day 111: 既判力の客観的範囲・相殺の抗弁' },
+  ],
+  '刑事訴訟法': [
+    { tag: 'DAY130_CRIMPRO_SEARCH', label: 'Day 130: 令状主義・所持品検査・職務質問' },
+    { tag: 'DAY131_CRIMPRO_EVIDENCE', label: 'Day 131: 伝聞法則・321条各号要件' },
+  ],
+  '行政法': [
+    { tag: 'DAY150_ADMIN_DISPOSITION', label: 'Day 150: 処分性・原告適格（行訴法9条）' },
+    { tag: 'DAY151_ADMIN_PROCEDURE', label: 'Day 151: 行政手続法・行政不服審査' },
+  ]
+};
 
 interface TantoQuestion {
   id: string;
@@ -37,6 +77,20 @@ function TantoPracticeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const currentSummaryTag = searchParams.get('summary') || 'DAY001_CAPACITY';
+
+  // 現在のタグが所属する科目を特定
+  const initialSubject = useMemo(() => {
+    for (const [subj, list] of Object.entries(SUBJECT_SUMMARIES)) {
+      if (list.some((item) => item.tag === currentSummaryTag)) return subj;
+    }
+    return '民法';
+  }, [currentSummaryTag]);
+
+  const [selectedSubject, setSelectedSubject] = useState(initialSubject);
+
+  useEffect(() => {
+    setSelectedSubject(initialSubject);
+  }, [initialSubject]);
 
   const [syncKey, setSyncKey] = useState<string>('ufu');
   const [isEditingKey, setIsEditingKey] = useState(false);
@@ -77,7 +131,6 @@ function TantoPracticeContent() {
       const loaded = qData || [];
       setQuestions(loaded);
 
-      // クラウドから中断進捗をロード
       if (loaded.length > 0) {
         const { data: syncData } = await supabase
           .from('user_sync_progress')
@@ -160,7 +213,18 @@ function TantoPracticeContent() {
     }
   };
 
-  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  // 1. 科目を切り替えたときの処理
+  const handleSubjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newSubj = e.target.value;
+    setSelectedSubject(newSubj);
+    const targetSummary = SUBJECT_SUMMARIES[newSubj]?.[0]?.tag;
+    if (targetSummary) {
+      router.push(`/tanto?summary=${targetSummary}`);
+    }
+  };
+
+  // 2. SUMMARY を切り替えたときの処理
+  const handleSummaryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     router.push(`/tanto?summary=${e.target.value}`);
   };
 
@@ -182,12 +246,13 @@ function TantoPracticeContent() {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-950 text-slate-400 font-mono text-sm">
-        前回の学習進捗を同期中...
+        進捗を同期中...
       </div>
     );
   }
 
   const accuracy = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+  const currentSummaryList = SUBJECT_SUMMARIES[selectedSubject] || [];
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between p-4 max-w-lg mx-auto select-none">
@@ -210,20 +275,39 @@ function TantoPracticeContent() {
           </div>
         </div>
 
-        {/* SUMMARY カテゴリー切替ドロップダウン */}
-        <div className="mb-2.5">
-          <label className="text-[10px] text-slate-400 font-bold block mb-1">【学習日程表 SUMMARY 選択】</label>
-          <select
-            value={currentSummaryTag}
-            onChange={handleCategoryChange}
-            className="w-full bg-slate-900 border border-indigo-600/60 text-indigo-200 text-xs font-semibold py-2 px-2.5 rounded-xl outline-none focus:border-indigo-400"
-          >
-            {SUMMARY_OPTIONS.map((opt) => (
-              <option key={opt.tag} value={opt.tag} className="bg-slate-900 text-slate-200">
-                {opt.label}
-              </option>
-            ))}
-          </select>
+        {/* 2段階選択：科目 ➜ SUMMARY */}
+        <div className="grid grid-cols-5 gap-2 mb-2.5">
+          {/* ① 科目選択 */}
+          <div className="col-span-2">
+            <label className="text-[10px] text-slate-400 font-bold block mb-1">① 科目</label>
+            <select
+              value={selectedSubject}
+              onChange={handleSubjectChange}
+              className="w-full bg-slate-900 border border-indigo-600/70 text-indigo-300 text-xs font-bold py-2 px-2 rounded-xl outline-none"
+            >
+              {Object.keys(SUBJECT_SUMMARIES).map((subj) => (
+                <option key={subj} value={subj} className="bg-slate-900 text-white">
+                  {subj}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* ② SUMMARY 選択 */}
+          <div className="col-span-3">
+            <label className="text-[10px] text-slate-400 font-bold block mb-1">② 学習日程 SUMMARY</label>
+            <select
+              value={currentSummaryTag}
+              onChange={handleSummaryChange}
+              className="w-full bg-slate-900 border border-emerald-600/70 text-emerald-300 text-xs font-semibold py-2 px-2 rounded-xl outline-none truncate"
+            >
+              {currentSummaryList.map((opt) => (
+                <option key={opt.tag} value={opt.tag} className="bg-slate-900 text-slate-100">
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {isEditingKey && (
@@ -250,6 +334,7 @@ function TantoPracticeContent() {
           </div>
         )}
 
+        {/* 前へ・次へ ナビゲーションバー */}
         <div className="flex justify-between items-center mb-2">
           <button
             onClick={handlePrev}
@@ -299,7 +384,7 @@ function TantoPracticeContent() {
         {questions.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center text-slate-300">
             <p className="font-bold text-base mb-1">このSUMMARYの問題は現在準備中です</p>
-            <p className="text-xs text-slate-500">下のSQLを実行して問題データを投入してください。</p>
+            <p className="text-xs text-slate-500">下記のSQLを実行して問題データを投入してください。</p>
           </div>
         ) : (
           <>
