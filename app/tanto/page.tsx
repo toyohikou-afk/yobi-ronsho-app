@@ -9,7 +9,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// 日程表 Day 1〜30（民法全日程完結）の定義
+// 日程表 Day 1〜35 の定義
 const SUMMARY_OPTIONS = [
   // --- 民法総則 ---
   { tag: 'DAY001_CAPACITY', label: 'Day 1: 行為能力・意思能力・詐術' },
@@ -50,6 +50,13 @@ const SUMMARY_OPTIONS = [
   { tag: 'DAY028_SUCCESSION', label: 'Day 28: 相続（遺産分割・相続分・放棄・配偶者居住権）' },
   { tag: 'DAY029_WILL_RESERVED_SHARE', label: 'Day 29: 遺言・遺留分侵害額請求' },
   { tag: 'DAY030_CIVIL_CODE_MASTER', label: 'Day 30: 民法全編総括・横断演習・要件事実完成' },
+
+  // --- 商法・会社法 ---
+  { tag: 'DAY031_CORP_FORMATION', label: 'Day 31: 会社法・設立・出資仮装・設立無効' },
+  { tag: 'DAY032_CORP_SHARES', label: 'Day 32: 株式・譲渡制限・名義書換・自己株式' },
+  { tag: 'DAY033_CORP_FINANCING', label: 'Day 33: 新株予約権・有利発行・差止請求' },
+  { tag: 'DAY034_CORP_SHAREHOLDERS_MEETING', label: 'Day 34: 機関① 株主総会権限・株主提案・決議瑕疵' },
+  { tag: 'DAY035_CORP_DIRECTORS_BOARD', label: 'Day 35: 機関② 取締役会・利益相反・表見代表' },
 ];
 
 interface TantoQuestion {
