@@ -9,7 +9,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// 日程表 Day 1〜35 の定義
+// 日程表 Day 1〜40 の定義
 const SUMMARY_OPTIONS = [
   // --- 民法総則 ---
   { tag: 'DAY001_CAPACITY', label: 'Day 1: 行為能力・意思能力・詐術' },
@@ -57,6 +57,11 @@ const SUMMARY_OPTIONS = [
   { tag: 'DAY033_CORP_FINANCING', label: 'Day 33: 新株予約権・有利発行・差止請求' },
   { tag: 'DAY034_CORP_SHAREHOLDERS_MEETING', label: 'Day 34: 機関① 株主総会権限・株主提案・決議瑕疵' },
   { tag: 'DAY035_CORP_DIRECTORS_BOARD', label: 'Day 35: 機関② 取締役会・利益相反・表見代表' },
+  { tag: 'DAY036_CORP_OFFICER_LIABILITY', label: 'Day 36: 役員責任・429条第三者責任・株主代表訴訟' },
+  { tag: 'DAY037_CORP_AUDIT_COMMITTEES', label: 'Day 37: 監査役・監査等委員会・指名委員会等設置会社' },
+  { tag: 'DAY038_CORP_ACCOUNTING_DIVIDEND', label: 'Day 38: 計算・資本金・分配可能額・剰余金配当' },
+  { tag: 'DAY039_CORP_MERGER_SPLIT', label: 'Day 39: 組織再編① 合併・会社分割・事業譲渡' },
+  { tag: 'DAY040_CORP_REORGANIZATION_MASTER', label: 'Day 40: 組織再編② 株式交換・移転・再編無効の訴え' },
 ];
 
 interface TantoQuestion {
