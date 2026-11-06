@@ -9,7 +9,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// 日程表 Day 1〜16 の定義
+// 日程表 Day 1〜21 の定義
 const SUMMARY_OPTIONS = [
   // --- 民法総則 ---
   { tag: 'DAY001_CAPACITY', label: 'Day 1: 行為能力・意思能力・詐術' },
@@ -32,6 +32,11 @@ const SUMMARY_OPTIONS = [
   // --- 債権総論 ---
   { tag: 'DAY015_OBLIGATION_GENERAL', label: 'Day 15: 債権総論・履行請求・債務不履行' },
   { tag: 'DAY016_ASSET_PROTECTION', label: 'Day 16: 責任財産の保全（代位権・詐害行為取消）' },
+  { tag: 'DAY017_MULTI_PARTY_GUARANTEE', label: 'Day 17: 多数当事者・連帯債務・保証債務' },
+  { tag: 'DAY018_ASSIGNMENT_ASSUMPTION', label: 'Day 18: 債権譲渡・債務引受・契約上の地位' },
+  { tag: 'DAY019_PERFORMANCE_SUBROGATION', label: 'Day 19: 弁済・代物弁済・弁済による代位' },
+  { tag: 'DAY020_SETOFF_EXTINCTION', label: 'Day 20: 相殺・更改・免除・混同' },
+  { tag: 'DAY021_CONTRACT_GENERAL', label: 'Day 21: 契約総論・危険負担・解除' },
 ];
 
 interface TantoQuestion {
