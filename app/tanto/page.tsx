@@ -9,7 +9,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// 日程表 Day 1〜21 の定義
+// 日程表 Day 1〜30（民法全日程完結）の定義
 const SUMMARY_OPTIONS = [
   // --- 民法総則 ---
   { tag: 'DAY001_CAPACITY', label: 'Day 1: 行為能力・意思能力・詐術' },
@@ -36,7 +36,20 @@ const SUMMARY_OPTIONS = [
   { tag: 'DAY018_ASSIGNMENT_ASSUMPTION', label: 'Day 18: 債権譲渡・債務引受・契約上の地位' },
   { tag: 'DAY019_PERFORMANCE_SUBROGATION', label: 'Day 19: 弁済・代物弁済・弁済による代位' },
   { tag: 'DAY020_SETOFF_EXTINCTION', label: 'Day 20: 相殺・更改・免除・混同' },
+
+  // --- 契約各論・債権各論 ---
   { tag: 'DAY021_CONTRACT_GENERAL', label: 'Day 21: 契約総論・危険負担・解除' },
+  { tag: 'DAY022_CONTRACT_SALE', label: 'Day 22: 売買・贈与・契約不適合責任' },
+  { tag: 'DAY023_CONTRACT_LEASE', label: 'Day 23: 賃貸借・消費貸借・使用貸借' },
+  { tag: 'DAY024_CONTRACT_SERVICE', label: 'Day 24: 請負・委任・寄託・和解' },
+  { tag: 'DAY025_QUASI_CONTRACT', label: 'Day 25: 事務管理・不当利得' },
+  { tag: 'DAY026_TORTS', label: 'Day 26: 不法行為（使用者責任・共同不法行為）' },
+
+  // --- 親族・相続・総括 ---
+  { tag: 'DAY027_FAMILY_RELATIONS', label: 'Day 27: 親族（婚姻・離婚・親子・成年後見）' },
+  { tag: 'DAY028_SUCCESSION', label: 'Day 28: 相続（遺産分割・相続分・放棄・配偶者居住権）' },
+  { tag: 'DAY029_WILL_RESERVED_SHARE', label: 'Day 29: 遺言・遺留分侵害額請求' },
+  { tag: 'DAY030_CIVIL_CODE_MASTER', label: 'Day 30: 民法全編総括・横断演習・要件事実完成' },
 ];
 
 interface TantoQuestion {
