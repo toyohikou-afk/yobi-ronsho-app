@@ -9,8 +9,9 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// 日程表 Day 1〜7 の定義
+// 日程表 Day 1〜16 の定義
 const SUMMARY_OPTIONS = [
+  // --- 民法総則 ---
   { tag: 'DAY001_CAPACITY', label: 'Day 1: 行為能力・意思能力・詐術' },
   { tag: 'DAY002_FALSE_REPR', label: 'Day 2: 虚偽表示・94条2項類推適用' },
   { tag: 'DAY003_MISTAKE_FRAUD', label: 'Day 3: 錯誤・詐欺取消と第三者・登記' },
@@ -18,6 +19,19 @@ const SUMMARY_OPTIONS = [
   { tag: 'DAY005_PRESCRIPTION', label: 'Day 5: 消滅時効・援用権者・信義則' },
   { tag: 'DAY006_GENERAL_MIX', label: 'Day 6: 総則総合演習（複雑論点）' },
   { tag: 'DAY007_SUMMARY_FACTS', label: 'Day 7: 民法総則総括・要件事実まとめ' },
+
+  // --- 物権・担保物権 ---
+  { tag: 'DAY008_PROPERTY_177', label: 'Day 8: 物権変動・177条第三者・背信的悪意者' },
+  { tag: 'DAY009_ACQUISITION', label: 'Day 9: 取得時効・即時取得・動産物権変動' },
+  { tag: 'DAY010_POSSESSION', label: 'Day 10: 占有権・占有訴権・果実収取権' },
+  { tag: 'DAY011_CO_OWNERSHIP', label: 'Day 11: 共有・共有物分割（令和3年改正）' },
+  { tag: 'DAY012_SECURITY_MORTGAGE', label: 'Day 12: 抵当権・物上代位・法定地上権' },
+  { tag: 'DAY013_PLEDGE_LIEN', label: 'Day 13: 留置権・先取特権・質権・譲渡担保' },
+  { tag: 'DAY014_PROPERTY_SUMMARY', label: 'Day 14: 物権総括・要件事実' },
+
+  // --- 債権総論 ---
+  { tag: 'DAY015_OBLIGATION_GENERAL', label: 'Day 15: 債権総論・履行請求・債務不履行' },
+  { tag: 'DAY016_ASSET_PROTECTION', label: 'Day 16: 責任財産の保全（代位権・詐害行為取消）' },
 ];
 
 interface TantoQuestion {
@@ -67,7 +81,7 @@ function TantoPracticeContent() {
       setStats({ correct: 0, total: 0 });
       setStreak(0);
 
-      // limit(30) を外し、作成日時順で全問（上限100）取得
+      // 作成日時順で全問（上限100）取得
       const { data: qData } = await supabase
         .from('tanto_questions')
         .select('*')
