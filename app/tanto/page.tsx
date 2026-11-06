@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense, useCallback } from 'react';
+import React, { useState, useEffect, Suspense, useCallback, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
@@ -9,60 +9,68 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// 日程表 Day 1〜40 の定義
-const SUMMARY_OPTIONS = [
+// 科目および SUMMARY の構造定義
+interface SummaryOption {
+  subject: string;
+  tag: string;
+  label: string;
+}
+
+const ALL_SUMMARY_OPTIONS: SummaryOption[] = [
   // --- 民法総則 ---
-  { tag: 'DAY001_CAPACITY', label: 'Day 1: 行為能力・意思能力・詐術' },
-  { tag: 'DAY002_FALSE_REPR', label: 'Day 2: 虚偽表示・94条2項類推適用' },
-  { tag: 'DAY003_MISTAKE_FRAUD', label: 'Day 3: 錯誤・詐欺取消と第三者・登記' },
-  { tag: 'DAY004_AGENCY', label: 'Day 4: 代理全体系・代理権濫用・表見代理' },
-  { tag: 'DAY005_PRESCRIPTION', label: 'Day 5: 消滅時効・援用権者・信義則' },
-  { tag: 'DAY006_GENERAL_MIX', label: 'Day 6: 総則総合演習（複雑論点）' },
-  { tag: 'DAY007_SUMMARY_FACTS', label: 'Day 7: 民法総則総括・要件事実まとめ' },
+  { subject: '民法', tag: 'DAY001_CAPACITY', label: 'Day 1: 行為能力・意思能力・詐術' },
+  { subject: '民法', tag: 'DAY002_FALSE_REPR', label: 'Day 2: 虚偽表示・94条2項類推適用' },
+  { subject: '民法', tag: 'DAY003_MISTAKE_FRAUD', label: 'Day 3: 錯誤・詐欺取消と第三者・登記' },
+  { subject: '民法', tag: 'DAY004_AGENCY', label: 'Day 4: 代理全体系・代理権濫用・表見代理' },
+  { subject: '民法', tag: 'DAY005_PRESCRIPTION', label: 'Day 5: 消滅時効・援用権者・信義則' },
+  { subject: '民法', tag: 'DAY006_GENERAL_MIX', label: 'Day 6: 総則総合演習（複雑論点）' },
+  { subject: '民法', tag: 'DAY007_SUMMARY_FACTS', label: 'Day 7: 民法総則総括・要件事実まとめ' },
 
-  // --- 物権・担保物権 ---
-  { tag: 'DAY008_PROPERTY_177', label: 'Day 8: 物権変動・177条第三者・背信的悪意者' },
-  { tag: 'DAY009_ACQUISITION', label: 'Day 9: 取得時効・即時取得・動産物権変動' },
-  { tag: 'DAY010_POSSESSION', label: 'Day 10: 占有権・占有訴権・果実収取権' },
-  { tag: 'DAY011_CO_OWNERSHIP', label: 'Day 11: 共有・共有物分割（令和3年改正）' },
-  { tag: 'DAY012_SECURITY_MORTGAGE', label: 'Day 12: 抵当権・物上代位・法定地上権' },
-  { tag: 'DAY013_PLEDGE_LIEN', label: 'Day 13: 留置権・先取特権・質権・譲渡担保' },
-  { tag: 'DAY014_PROPERTY_SUMMARY', label: 'Day 14: 物権総括・要件事実' },
+  // --- 民法 物権・担保物権 ---
+  { subject: '民法', tag: 'DAY008_PROPERTY_177', label: 'Day 8: 物権変動・177条第三者・背信的悪意者' },
+  { subject: '民法', tag: 'DAY009_ACQUISITION', label: 'Day 9: 取得時効・即時取得・動産物権変動' },
+  { subject: '民法', tag: 'DAY010_POSSESSION', label: 'Day 10: 占有権・占有訴権・果実収取権' },
+  { subject: '民法', tag: 'DAY011_CO_OWNERSHIP', label: 'Day 11: 共有・共有物分割（令和3年改正）' },
+  { subject: '民法', tag: 'DAY012_SECURITY_MORTGAGE', label: 'Day 12: 抵当権・物上代位・法定地上権' },
+  { subject: '民法', tag: 'DAY013_PLEDGE_LIEN', label: 'Day 13: 留置権・先取特権・質権・譲渡担保' },
+  { subject: '民法', tag: 'DAY014_PROPERTY_SUMMARY', label: 'Day 14: 物権総括・要件事実' },
 
-  // --- 債権総論 ---
-  { tag: 'DAY015_OBLIGATION_GENERAL', label: 'Day 15: 債権総論・履行請求・債務不履行' },
-  { tag: 'DAY016_ASSET_PROTECTION', label: 'Day 16: 責任財産の保全（代位権・詐害行為取消）' },
-  { tag: 'DAY017_MULTI_PARTY_GUARANTEE', label: 'Day 17: 多数当事者・連帯債務・保証債務' },
-  { tag: 'DAY018_ASSIGNMENT_ASSUMPTION', label: 'Day 18: 債権譲渡・債務引受・契約上の地位' },
-  { tag: 'DAY019_PERFORMANCE_SUBROGATION', label: 'Day 19: 弁済・代物弁済・弁済による代位' },
-  { tag: 'DAY020_SETOFF_EXTINCTION', label: 'Day 20: 相殺・更改・免除・混同' },
+  // --- 民法 債権総論 ---
+  { subject: '民法', tag: 'DAY015_OBLIGATION_GENERAL', label: 'Day 15: 債権総論・履行請求・債務不履行' },
+  { subject: '民法', tag: 'DAY016_ASSET_PROTECTION', label: 'Day 16: 責任財産の保全（代位権・詐害行為取消）' },
+  { subject: '民法', tag: 'DAY017_MULTI_PARTY_GUARANTEE', label: 'Day 17: 多数当事者・連帯債務・保証債務' },
+  { subject: '民法', tag: 'DAY018_ASSIGNMENT_ASSUMPTION', label: 'Day 18: 債権譲渡・債務引受・契約上の地位' },
+  { subject: '民法', tag: 'DAY019_PERFORMANCE_SUBROGATION', label: 'Day 19: 弁済・代物弁済・弁済による代位' },
+  { subject: '民法', tag: 'DAY020_SETOFF_EXTINCTION', label: 'Day 20: 相殺・更改・免除・混同' },
 
-  // --- 契約各論・債権各論 ---
-  { tag: 'DAY021_CONTRACT_GENERAL', label: 'Day 21: 契約総論・危険負担・解除' },
-  { tag: 'DAY022_CONTRACT_SALE', label: 'Day 22: 売買・贈与・契約不適合責任' },
-  { tag: 'DAY023_CONTRACT_LEASE', label: 'Day 23: 賃貸借・消費貸借・使用貸借' },
-  { tag: 'DAY024_CONTRACT_SERVICE', label: 'Day 24: 請負・委任・寄託・和解' },
-  { tag: 'DAY025_QUASI_CONTRACT', label: 'Day 25: 事務管理・不当利得' },
-  { tag: 'DAY026_TORTS', label: 'Day 26: 不法行為（使用者責任・共同不法行為）' },
+  // --- 民法 契約各論・法定債権 ---
+  { subject: '民法', tag: 'DAY021_CONTRACT_GENERAL', label: 'Day 21: 契約総論・危険負担・解除' },
+  { subject: '民法', tag: 'DAY022_CONTRACT_SALE', label: 'Day 22: 売買・贈与・契約不適合責任' },
+  { subject: '民法', tag: 'DAY023_CONTRACT_LEASE', label: 'Day 23: 賃貸借・消費貸借・使用貸借' },
+  { subject: '民法', tag: 'DAY024_CONTRACT_SERVICE', label: 'Day 24: 請負・委任・寄託・和解' },
+  { subject: '民法', tag: 'DAY025_QUASI_CONTRACT', label: 'Day 25: 事務管理・不当利得' },
+  { subject: '民法', tag: 'DAY026_TORTS', label: 'Day 26: 不法行為（使用者責任・共同不法行為）' },
 
-  // --- 親族・相続・総括 ---
-  { tag: 'DAY027_FAMILY_RELATIONS', label: 'Day 27: 親族（婚姻・離婚・親子・成年後見）' },
-  { tag: 'DAY028_SUCCESSION', label: 'Day 28: 相続（遺産分割・相続分・放棄・配偶者居住権）' },
-  { tag: 'DAY029_WILL_RESERVED_SHARE', label: 'Day 29: 遺言・遺留分侵害額請求' },
-  { tag: 'DAY030_CIVIL_CODE_MASTER', label: 'Day 30: 民法全編総括・横断演習・要件事実完成' },
+  // --- 民法 親族・相続・総括 ---
+  { subject: '民法', tag: 'DAY027_FAMILY_RELATIONS', label: 'Day 27: 親族（婚姻・離婚・親子・成年後見）' },
+  { subject: '民法', tag: 'DAY028_SUCCESSION', label: 'Day 28: 相続（遺産分割・相続分・放棄・配偶者居住権）' },
+  { subject: '民法', tag: 'DAY029_WILL_RESERVED_SHARE', label: 'Day 29: 遺言・遺留分侵害額請求' },
+  { subject: '民法', tag: 'DAY030_CIVIL_CODE_MASTER', label: 'Day 30: 民法全編総括・横断演習・要件事実完成' },
 
   // --- 商法・会社法 ---
-  { tag: 'DAY031_CORP_FORMATION', label: 'Day 31: 会社法・設立・出資仮装・設立無効' },
-  { tag: 'DAY032_CORP_SHARES', label: 'Day 32: 株式・譲渡制限・名義書換・自己株式' },
-  { tag: 'DAY033_CORP_FINANCING', label: 'Day 33: 新株予約権・有利発行・差止請求' },
-  { tag: 'DAY034_CORP_SHAREHOLDERS_MEETING', label: 'Day 34: 機関① 株主総会権限・株主提案・決議瑕疵' },
-  { tag: 'DAY035_CORP_DIRECTORS_BOARD', label: 'Day 35: 機関② 取締役会・利益相反・表見代表' },
-  { tag: 'DAY036_CORP_OFFICER_LIABILITY', label: 'Day 36: 役員責任・429条第三者責任・株主代表訴訟' },
-  { tag: 'DAY037_CORP_AUDIT_COMMITTEES', label: 'Day 37: 監査役・監査等委員会・指名委員会等設置会社' },
-  { tag: 'DAY038_CORP_ACCOUNTING_DIVIDEND', label: 'Day 38: 計算・資本金・分配可能額・剰余金配当' },
-  { tag: 'DAY039_CORP_MERGER_SPLIT', label: 'Day 39: 組織再編① 合併・会社分割・事業譲渡' },
-  { tag: 'DAY040_CORP_REORGANIZATION_MASTER', label: 'Day 40: 組織再編② 株式交換・移転・再編無効の訴え' },
+  { subject: '商法・会社法', tag: 'DAY031_CORP_FORMATION', label: 'Day 31: 会社法・設立・出資仮装・設立無効' },
+  { subject: '商法・会社法', tag: 'DAY032_CORP_SHARES', label: 'Day 32: 株式・譲渡制限・名義書換・自己株式' },
+  { subject: '商法・会社法', tag: 'DAY033_CORP_FINANCING', label: 'Day 33: 新株予約権・有利発行・差止請求' },
+  { subject: '商法・会社法', tag: 'DAY034_CORP_SHAREHOLDERS_MEETING', label: 'Day 34: 機関① 株主総会権限・株主提案・決議瑕疵' },
+  { subject: '商法・会社法', tag: 'DAY035_CORP_DIRECTORS_BOARD', label: 'Day 35: 機関② 取締役会・利益相反・表見代表' },
+  { subject: '商法・会社法', tag: 'DAY036_CORP_OFFICER_LIABILITY', label: 'Day 36: 役員責任・429条第三者責任・株主代表訴訟' },
+  { subject: '商法・会社法', tag: 'DAY037_CORP_AUDIT_COMMITTEES', label: 'Day 37: 監査役・監査等委員会・指名委員会等設置会社' },
+  { subject: '商法・会社法', tag: 'DAY038_CORP_ACCOUNTING_DIVIDEND', label: 'Day 38: 計算・資本金・分配可能額・剰余金配当' },
+  { subject: '商法・会社法', tag: 'DAY039_CORP_MERGER_SPLIT', label: 'Day 39: 組織再編① 合併・会社分割・事業譲渡' },
+  { subject: '商法・会社法', tag: 'DAY040_CORP_REORGANIZATION_MASTER', label: 'Day 40: 組織再編② 株式交換・移転・再編無効の訴え' },
 ];
+
+const SUBJECT_LIST = Array.from(new Set(ALL_SUMMARY_OPTIONS.map((item) => item.subject)));
 
 interface TantoQuestion {
   id: string;
@@ -81,6 +89,17 @@ function TantoPracticeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const currentSummaryTag = searchParams.get('summary') || 'DAY001_CAPACITY';
+
+  // 現在のタグに対応する科目を特定
+  const currentSubject = useMemo(() => {
+    const found = ALL_SUMMARY_OPTIONS.find((item) => item.tag === currentSummaryTag);
+    return found ? found.subject : '民法';
+  }, [currentSummaryTag]);
+
+  // 選択中科目の SUMMARY 選択肢一覧
+  const currentSubjectOptions = useMemo(() => {
+    return ALL_SUMMARY_OPTIONS.filter((item) => item.subject === currentSubject);
+  }, [currentSubject]);
 
   const [syncKey, setSyncKey] = useState<string>('ufu');
   const [isEditingKey, setIsEditingKey] = useState(false);
@@ -111,7 +130,7 @@ function TantoPracticeContent() {
       setStats({ correct: 0, total: 0 });
       setStreak(0);
 
-      // 作成日時順で全問（上限100）取得
+      // summary_tag に紐づく全問（上限100）を取得
       const { data: qData } = await supabase
         .from('tanto_questions')
         .select('*')
@@ -205,7 +224,17 @@ function TantoPracticeContent() {
     }
   };
 
-  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  // 科目変更時：該当科目の最初のSUMMARYへ遷移
+  const handleSubjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextSub = e.target.value;
+    const firstOption = ALL_SUMMARY_OPTIONS.find((item) => item.subject === nextSub);
+    if (firstOption) {
+      router.push(`/tanto?summary=${firstOption.tag}`);
+    }
+  };
+
+  // SUMMARY変更時
+  const handleSummaryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     router.push(`/tanto?summary=${e.target.value}`);
   };
 
@@ -243,7 +272,6 @@ function TantoPracticeContent() {
             ← 論証集
           </Link>
 
-          {/* touan-psi /practice への統合ボタン */}
           <a
             href="https://touan-psi.vercel.app/practice"
             target="_blank"
@@ -270,20 +298,39 @@ function TantoPracticeContent() {
           </div>
         </div>
 
-        {/* SUMMARY カテゴリー切替ドロップダウン */}
-        <div className="mb-2.5">
-          <label className="text-[10px] text-slate-400 font-bold block mb-1">【学習日程表 SUMMARY 選択】</label>
-          <select
-            value={currentSummaryTag}
-            onChange={handleCategoryChange}
-            className="w-full bg-slate-900 border border-indigo-600/60 text-indigo-200 text-xs font-semibold py-2 px-2.5 rounded-xl outline-none focus:border-indigo-400"
-          >
-            {SUMMARY_OPTIONS.map((opt) => (
-              <option key={opt.tag} value={opt.tag} className="bg-slate-900 text-slate-200">
-                {opt.label}
-              </option>
-            ))}
-          </select>
+        {/* 2段階セレクター：科目選択 ＆ SUMMARY選択 */}
+        <div className="mb-2.5 grid grid-cols-3 gap-2">
+          {/* ① 科目選択 */}
+          <div className="col-span-1">
+            <label className="text-[10px] text-slate-400 font-bold block mb-1">【科目】</label>
+            <select
+              value={currentSubject}
+              onChange={handleSubjectChange}
+              className="w-full bg-slate-900 border border-indigo-600/60 text-indigo-200 text-xs font-semibold py-2 px-2 rounded-xl outline-none focus:border-indigo-400"
+            >
+              {SUBJECT_LIST.map((sub) => (
+                <option key={sub} value={sub} className="bg-slate-900 text-slate-200">
+                  {sub}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* ② 選択科目に連動した SUMMARY 選択 */}
+          <div className="col-span-2">
+            <label className="text-[10px] text-slate-400 font-bold block mb-1">【日程・単元】</label>
+            <select
+              value={currentSummaryTag}
+              onChange={handleSummaryChange}
+              className="w-full bg-slate-900 border border-indigo-600/60 text-indigo-200 text-xs font-semibold py-2 px-2 rounded-xl outline-none focus:border-indigo-400"
+            >
+              {currentSubjectOptions.map((opt) => (
+                <option key={opt.tag} value={opt.tag} className="bg-slate-900 text-slate-200">
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {isEditingKey && (
@@ -359,7 +406,7 @@ function TantoPracticeContent() {
         {questions.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center text-slate-300">
             <p className="font-bold text-base mb-1">このSUMMARYの問題は現在準備中です</p>
-            <p className="text-xs text-slate-500">下のSQLを実行して問題データを投入してください。</p>
+            <p className="text-xs text-slate-500">SQLを実行して問題データを投入してください。</p>
           </div>
         ) : (
           <>
